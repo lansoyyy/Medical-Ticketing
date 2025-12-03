@@ -17,7 +17,7 @@ class MyApp extends StatelessWidget {
       title: 'Medical Ticketing System',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme,
-      home: const PatientHomeScreen(),
+      home: const LoginScreen(),
     );
   }
 }
