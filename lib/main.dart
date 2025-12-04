@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:medical_ticketing/screens/doctor/doctor_home_screen.dart';
+import 'package:medical_ticketing/screens/nurse/nurse_home_screen.dart';
 import 'package:medical_ticketing/screens/patient/patient_home_screen.dart';
 import 'config/app_theme.dart';
 import 'screens/auth/login_screen.dart';
@@ -17,7 +19,7 @@ class MyApp extends StatelessWidget {
       title: 'Medical Ticketing System',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme,
-      home: const LoginScreen(),
+      home: const DoctorHomeScreen(),
     );
   }
 }
