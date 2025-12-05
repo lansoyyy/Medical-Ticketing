@@ -3,6 +3,9 @@ import '../../utils/colors.dart';
 import '../../utils/text_styles.dart';
 import '../../widgets/widgets.dart';
 import '../patient/patient_home_screen.dart';
+import '../nurse/nurse_home_screen.dart';
+import '../doctor/doctor_home_screen.dart';
+import '../admin/admin_home_screen.dart';
 import 'register_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -16,6 +19,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
   final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
+  String _selectedRole = 'Patient';
 
   @override
   void dispose() {
@@ -64,6 +68,35 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
+  Widget _buildRoleChip(String label, IconData icon) {
+    final isSelected = _selectedRole == label;
+    return ChoiceChip(
+      label: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            icon,
+            size: 16,
+            color: isSelected ? AppColors.white : AppColors.textSecondary,
+          ),
+          const SizedBox(width: 6),
+          Text(label),
+        ],
+      ),
+      selected: isSelected,
+      selectedColor: AppColors.primary,
+      backgroundColor: AppColors.grey100,
+      labelStyle: AppTextStyles.bodySmall.copyWith(
+        color: isSelected ? AppColors.white : AppColors.textSecondary,
+      ),
+      onSelected: (_) {
+        setState(() {
+          _selectedRole = label;
+        });
+      },
+    );
+  }
+
   Widget _buildLoginForm() {
     return Form(
       key: _formKey,
@@ -104,7 +137,29 @@ class _LoginScreenState extends State<LoginScreen> {
             prefixIcon: Icons.lock_outline,
             obscureText: true,
           ),
-          const SizedBox(height: 32),
+          const SizedBox(height: 24),
+
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              'Login as',
+              style: AppTextStyles.bodySmall.copyWith(
+                color: AppColors.textSecondary,
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _buildRoleChip('Patient', Icons.person_outline),
+              _buildRoleChip('Nurse', Icons.medical_services_outlined),
+              _buildRoleChip('Doctor', Icons.local_hospital_outlined),
+              _buildRoleChip('Admin', Icons.admin_panel_settings_outlined),
+            ],
+          ),
+          const SizedBox(height: 24),
 
           // Login Button
           PrimaryButton(
@@ -329,17 +384,35 @@ class _LoginScreenState extends State<LoginScreen> {
 
   void _handleLogin() {
     // Navigate to patient home screen (for UI demo)
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(builder: (context) => const PatientHomeScreen()),
-    );
+    _navigateToRoleHome();
   }
 
   void _handleGuestAccess() {
     // Navigate to patient home screen as guest
+    _navigateToRoleHome();
+  }
+
+  void _navigateToRoleHome() {
+    Widget screen;
+    switch (_selectedRole) {
+      case 'Nurse':
+        screen = const NurseHomeScreen();
+        break;
+      case 'Doctor':
+        screen = const DoctorHomeScreen();
+        break;
+      case 'Admin':
+        screen = const AdminHomeScreen();
+        break;
+      case 'Patient':
+      default:
+        screen = const PatientHomeScreen();
+        break;
+    }
+
     Navigator.pushReplacement(
       context,
-      MaterialPageRoute(builder: (context) => const PatientHomeScreen()),
+      MaterialPageRoute(builder: (context) => screen),
     );
   }
 
