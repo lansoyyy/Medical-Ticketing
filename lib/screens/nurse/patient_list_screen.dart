@@ -248,64 +248,82 @@ class _PatientListScreenState extends State<PatientListScreen> {
   }
 
   void _showEditPatientDialog(Map<String, dynamic> patient) {
+    String? selectedGender = patient['gender'];
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Edit Patient - ${patient['name']}'),
-        content: SizedBox(
-          width: 400,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextFormField(
-                  initialValue: patient['name'],
-                  decoration: const InputDecoration(labelText: 'Full Name')),
-              const SizedBox(height: 12),
-              TextFormField(
-                  initialValue: patient['contact'],
-                  decoration:
-                      const InputDecoration(labelText: 'Contact Number')),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                      child: TextFormField(
-                          initialValue: patient['age'],
-                          decoration: const InputDecoration(labelText: 'Age'))),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: DropdownButtonFormField<String>(
-                      value: patient['gender'],
-                      decoration: const InputDecoration(labelText: 'Gender'),
-                      items: ['Male', 'Female']
-                          .map(
-                              (e) => DropdownMenuItem(value: e, child: Text(e)))
-                          .toList(),
-                      onChanged: (_) {},
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: Text('Edit Patient - ${patient['name']}'),
+          content: SizedBox(
+            width: 400,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextFormField(
+                    initialValue: patient['name'],
+                    style: const TextStyle(color: AppColors.inputText),
+                    decoration: const InputDecoration(
+                        labelText: 'Full Name', hintText: 'Enter full name')),
+                const SizedBox(height: 12),
+                TextFormField(
+                    initialValue: patient['contact'],
+                    style: const TextStyle(color: AppColors.inputText),
+                    decoration: const InputDecoration(
+                        labelText: 'Contact Number',
+                        hintText: 'Enter contact number')),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                        child: TextFormField(
+                            initialValue: patient['age'],
+                            style: const TextStyle(color: AppColors.inputText),
+                            decoration: const InputDecoration(
+                                labelText: 'Age', hintText: 'Age'))),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: DropdownButtonFormField<String>(
+                        value: selectedGender,
+                        dropdownColor: AppColors.inputBackground,
+                        style: const TextStyle(color: AppColors.inputText),
+                        decoration: const InputDecoration(
+                            labelText: 'Gender', hintText: 'Select'),
+                        items: ['Male', 'Female']
+                            .map((e) => DropdownMenuItem(
+                                value: e,
+                                child: Text(e,
+                                    style: const TextStyle(
+                                        color: AppColors.inputText))))
+                            .toList(),
+                        onChanged: (v) =>
+                            setDialogState(() => selectedGender = v),
+                      ),
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                  decoration: const InputDecoration(labelText: 'Address'),
-                  maxLines: 2),
-            ],
+                  ],
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                    style: const TextStyle(color: AppColors.inputText),
+                    decoration: const InputDecoration(
+                        labelText: 'Address', hintText: 'Enter address'),
+                    maxLines: 2),
+              ],
+            ),
           ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancel')),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Patient information updated')));
+              },
+              child: const Text('Save'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel')),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Patient information updated')));
-            },
-            child: const Text('Save'),
-          ),
-        ],
       ),
     );
   }
@@ -322,33 +340,59 @@ class _PatientListScreenState extends State<PatientListScreen> {
               children: [
                 Expanded(
                     child: TextField(
+                        style: const TextStyle(color: AppColors.inputText),
                         decoration: const InputDecoration(
-                            labelText: 'Systolic', suffixText: 'mmHg'))),
+                            labelText: 'Systolic',
+                            hintText: '120',
+                            suffixText: 'mmHg',
+                            suffixStyle:
+                                TextStyle(color: AppColors.inputHint)))),
                 const SizedBox(width: 8),
                 const Text('/'),
                 const SizedBox(width: 8),
                 Expanded(
                     child: TextField(
+                        style: const TextStyle(color: AppColors.inputText),
                         decoration: const InputDecoration(
-                            labelText: 'Diastolic', suffixText: 'mmHg'))),
+                            labelText: 'Diastolic',
+                            hintText: '80',
+                            suffixText: 'mmHg',
+                            suffixStyle:
+                                TextStyle(color: AppColors.inputHint)))),
               ],
             ),
             const SizedBox(height: 12),
             TextField(
+                style: const TextStyle(color: AppColors.inputText),
                 decoration: const InputDecoration(
-                    labelText: 'Temperature', suffixText: '°C')),
+                    labelText: 'Temperature',
+                    hintText: '36.5',
+                    suffixText: '°C',
+                    suffixStyle: TextStyle(color: AppColors.inputHint))),
             const SizedBox(height: 12),
             TextField(
+                style: const TextStyle(color: AppColors.inputText),
                 decoration: const InputDecoration(
-                    labelText: 'Weight', suffixText: 'kg')),
+                    labelText: 'Weight',
+                    hintText: '65',
+                    suffixText: 'kg',
+                    suffixStyle: TextStyle(color: AppColors.inputHint))),
             const SizedBox(height: 12),
             TextField(
+                style: const TextStyle(color: AppColors.inputText),
                 decoration: const InputDecoration(
-                    labelText: 'Heart Rate', suffixText: 'bpm')),
+                    labelText: 'Heart Rate',
+                    hintText: '72',
+                    suffixText: 'bpm',
+                    suffixStyle: TextStyle(color: AppColors.inputHint))),
             const SizedBox(height: 12),
             TextField(
+                style: const TextStyle(color: AppColors.inputText),
                 decoration: const InputDecoration(
-                    labelText: 'Respiratory Rate', suffixText: '/min')),
+                    labelText: 'Respiratory Rate',
+                    hintText: '16',
+                    suffixText: '/min',
+                    suffixStyle: TextStyle(color: AppColors.inputHint))),
           ],
         ),
         actions: [
@@ -402,8 +446,11 @@ class _PatientListScreenState extends State<PatientListScreen> {
               ),
               const SizedBox(height: 16),
               TextField(
+                style: const TextStyle(color: AppColors.inputText),
                 decoration: const InputDecoration(
-                    labelText: 'Add New Note', alignLabelWithHint: true),
+                    labelText: 'Add New Note',
+                    hintText: 'Enter nursing notes...',
+                    alignLabelWithHint: true),
                 maxLines: 4,
               ),
             ],
@@ -537,9 +584,15 @@ class _PatientListScreenState extends State<PatientListScreen> {
             ),
             const SizedBox(height: 16),
             DropdownButtonFormField<String>(
-              decoration: const InputDecoration(labelText: 'Document Type'),
+              dropdownColor: AppColors.inputBackground,
+              style: const TextStyle(color: AppColors.inputText),
+              decoration: const InputDecoration(
+                  labelText: 'Document Type', hintText: 'Select type'),
               items: ['Lab Results', 'X-Ray', 'Medical Report', 'Other']
-                  .map((e) => DropdownMenuItem(value: e, child: Text(e)))
+                  .map((e) => DropdownMenuItem(
+                      value: e,
+                      child: Text(e,
+                          style: const TextStyle(color: AppColors.inputText))))
                   .toList(),
               onChanged: (_) {},
             ),

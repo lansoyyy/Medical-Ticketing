@@ -113,7 +113,14 @@ class AppTextStyles {
     fontFamily: fontMedium,
     fontSize: 14,
     fontWeight: FontWeight.w500,
-    color: AppColors.textPrimary,
+    color: AppColors.inputHint,
+  );
+
+  static TextStyle inputLabelFloating = const TextStyle(
+    fontFamily: fontMedium,
+    fontSize: 14,
+    fontWeight: FontWeight.w500,
+    color: AppColors.inputHint,
   );
 
   // Link Styles

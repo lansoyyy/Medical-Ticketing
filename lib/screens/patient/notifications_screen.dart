@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import '../../utils/colors.dart';
 import '../../utils/text_styles.dart';
+import 'queue_screen.dart';
+import 'appointments_screen.dart';
+import 'records_screen.dart';
 
 class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({super.key});
@@ -341,7 +344,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                 child: ElevatedButton(
                   onPressed: () {
                     Navigator.pop(context);
-                    // Handle action based on notification type
+                    _handleNotificationAction(notification);
                   },
                   style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.primary),
@@ -354,6 +357,39 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         ),
       ),
     );
+  }
+
+  void _handleNotificationAction(Map<String, dynamic> notification) {
+    final action = notification['action'];
+    
+    switch (action) {
+      case 'View Queue Status':
+        // Navigate to Queue Screen
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const QueueScreen()),
+        );
+        break;
+      case 'View Appointment':
+      case 'View Details':
+        // Navigate to Appointments Screen
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const AppointmentsScreen()),
+        );
+        break;
+      case 'View Results':
+        // Navigate to Records Screen (Lab Results tab)
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const RecordsScreen()),
+        );
+        break;
+      default:
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Action: $action')),
+        );
+    }
   }
 
   void _markAllAsRead() {

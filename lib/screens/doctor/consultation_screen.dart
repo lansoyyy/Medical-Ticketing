@@ -543,314 +543,421 @@ class _ConsultationScreenState extends State<ConsultationScreen>
   }
 
   void _showPrescriptionDialog() {
+    String? selectedFrequency;
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Issue Prescription'),
-        content: SizedBox(
-          width: 500,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                      child: TextField(
-                          decoration: const InputDecoration(
-                              labelText: 'Medication Name'))),
-                  const SizedBox(width: 12),
-                  SizedBox(
-                      width: 100,
-                      child: TextField(
-                          decoration:
-                              const InputDecoration(labelText: 'Dosage'))),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                      child: DropdownButtonFormField<String>(
-                          decoration:
-                              const InputDecoration(labelText: 'Frequency'),
-                          items: [
-                            'Once daily',
-                            'Twice daily',
-                            'Three times daily',
-                            'As needed'
-                          ]
-                              .map((e) =>
-                                  DropdownMenuItem(value: e, child: Text(e)))
-                              .toList(),
-                          onChanged: (_) {})),
-                  const SizedBox(width: 12),
-                  SizedBox(
-                      width: 120,
-                      child: TextField(
-                          decoration: const InputDecoration(
-                              labelText: 'Duration', suffixText: 'days'))),
-                ],
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                  decoration: const InputDecoration(
-                      labelText: 'Instructions',
-                      hintText: 'e.g., Take after meals'),
-                  maxLines: 2),
-              const SizedBox(height: 16),
-              Align(
-                  alignment: Alignment.centerLeft,
-                  child: TextButton.icon(
-                      onPressed: () {},
-                      icon: const Icon(Icons.add),
-                      label: const Text('Add Another Medication'))),
-            ],
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Issue Prescription'),
+          content: SizedBox(
+            width: 500,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                        child: TextField(
+                            style: const TextStyle(color: AppColors.inputText),
+                            decoration: const InputDecoration(
+                                labelText: 'Medication Name',
+                                hintText: 'Enter medication'))),
+                    const SizedBox(width: 12),
+                    SizedBox(
+                        width: 100,
+                        child: TextField(
+                            style: const TextStyle(color: AppColors.inputText),
+                            decoration: const InputDecoration(
+                                labelText: 'Dosage',
+                                hintText: 'mg'))),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                        child: DropdownButtonFormField<String>(
+                            value: selectedFrequency,
+                            dropdownColor: AppColors.inputBackground,
+                            style: const TextStyle(color: AppColors.inputText),
+                            decoration: const InputDecoration(
+                                labelText: 'Frequency',
+                                hintText: 'Select frequency'),
+                            items: [
+                              'Once daily',
+                              'Twice daily',
+                              'Three times daily',
+                              'As needed'
+                            ]
+                                .map((e) => DropdownMenuItem(
+                                    value: e,
+                                    child: Text(e,
+                                        style: const TextStyle(
+                                            color: AppColors.inputText))))
+                                .toList(),
+                            onChanged: (v) =>
+                                setDialogState(() => selectedFrequency = v))),
+                    const SizedBox(width: 12),
+                    SizedBox(
+                        width: 120,
+                        child: TextField(
+                            style: const TextStyle(color: AppColors.inputText),
+                            decoration: const InputDecoration(
+                                labelText: 'Duration',
+                                hintText: 'Days',
+                                suffixText: 'days',
+                                suffixStyle:
+                                    TextStyle(color: AppColors.inputHint)))),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                    style: const TextStyle(color: AppColors.inputText),
+                    decoration: const InputDecoration(
+                        labelText: 'Instructions',
+                        hintText: 'e.g., Take after meals'),
+                    maxLines: 2),
+                const SizedBox(height: 16),
+                Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton.icon(
+                        onPressed: () {},
+                        icon: const Icon(Icons.add),
+                        label: const Text('Add Another Medication'))),
+              ],
+            ),
           ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancel')),
+            ElevatedButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                      content: Text('Prescription issued successfully')));
+                },
+                style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.cardPurple),
+                child: const Text('Issue Prescription')),
+          ],
         ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel')),
-          ElevatedButton(
-              onPressed: () {
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                    content: Text('Prescription issued successfully')));
-              },
-              child: const Text('Issue Prescription')),
-        ],
       ),
     );
   }
 
   void _showLabOrderDialog() {
+    List<String> selectedTests = [];
+    String? selectedPriority;
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Order Laboratory Test'),
-        content: SizedBox(
-          width: 400,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Select Tests:',
-                  style: AppTextStyles.bodyMedium
-                      .copyWith(fontWeight: FontWeight.w600)),
-              const SizedBox(height: 12),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  'CBC',
-                  'Urinalysis',
-                  'Lipid Profile',
-                  'FBS',
-                  'HbA1c',
-                  'Liver Panel',
-                  'Kidney Panel',
-                  'Thyroid Panel'
-                ]
-                    .map((test) => FilterChip(
-                        label: Text(test), selected: false, onSelected: (_) {}))
-                    .toList(),
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                  decoration:
-                      const InputDecoration(labelText: 'Special Instructions'),
-                  maxLines: 2),
-              const SizedBox(height: 12),
-              DropdownButtonFormField<String>(
-                  decoration: const InputDecoration(labelText: 'Priority'),
-                  items: ['Routine', 'Urgent', 'STAT']
-                      .map((e) => DropdownMenuItem(value: e, child: Text(e)))
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Order Laboratory Test'),
+          content: SizedBox(
+            width: 400,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Select Tests:',
+                    style: AppTextStyles.bodyMedium
+                        .copyWith(fontWeight: FontWeight.w600)),
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    'CBC',
+                    'Urinalysis',
+                    'Lipid Profile',
+                    'FBS',
+                    'HbA1c',
+                    'Liver Panel',
+                    'Kidney Panel',
+                    'Thyroid Panel'
+                  ]
+                      .map((test) => FilterChip(
+                          label: Text(test),
+                          selected: selectedTests.contains(test),
+                          selectedColor: AppColors.cardCyan.withOpacity(0.2),
+                          checkmarkColor: AppColors.cardCyan,
+                          onSelected: (selected) {
+                            setDialogState(() {
+                              if (selected) {
+                                selectedTests.add(test);
+                              } else {
+                                selectedTests.remove(test);
+                              }
+                            });
+                          }))
                       .toList(),
-                  onChanged: (_) {}),
-            ],
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                    style: const TextStyle(color: AppColors.inputText),
+                    decoration: const InputDecoration(
+                        labelText: 'Special Instructions',
+                        hintText: 'Enter any special instructions'),
+                    maxLines: 2),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                    value: selectedPriority,
+                    dropdownColor: AppColors.inputBackground,
+                    style: const TextStyle(color: AppColors.inputText),
+                    decoration: const InputDecoration(
+                        labelText: 'Priority', hintText: 'Select priority'),
+                    items: ['Routine', 'Urgent', 'STAT']
+                        .map((e) => DropdownMenuItem(
+                            value: e,
+                            child: Text(e,
+                                style: const TextStyle(
+                                    color: AppColors.inputText))))
+                        .toList(),
+                    onChanged: (v) =>
+                        setDialogState(() => selectedPriority = v)),
+              ],
+            ),
           ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancel')),
+            ElevatedButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                      content: Text('Lab order created successfully')));
+                },
+                style:
+                    ElevatedButton.styleFrom(backgroundColor: AppColors.cardCyan),
+                child: const Text('Order Tests')),
+          ],
         ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel')),
-          ElevatedButton(
-              onPressed: () {
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                    content: Text('Lab order created successfully')));
-              },
-              child: const Text('Order Tests')),
-        ],
       ),
     );
   }
 
   void _showCertificateDialog() {
+    String? selectedType;
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Issue Medical Certificate'),
-        content: SizedBox(
-          width: 400,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              DropdownButtonFormField<String>(
-                  decoration:
-                      const InputDecoration(labelText: 'Certificate Type'),
-                  items: [
-                    'Medical Certificate',
-                    'Fit to Work',
-                    'Medical Clearance',
-                    'Sick Leave'
-                  ]
-                      .map((e) => DropdownMenuItem(value: e, child: Text(e)))
-                      .toList(),
-                  onChanged: (_) {}),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                      child: TextField(
-                          decoration:
-                              const InputDecoration(labelText: 'Valid From'),
-                          readOnly: true,
-                          controller:
-                              TextEditingController(text: 'Dec 5, 2024'))),
-                  const SizedBox(width: 12),
-                  Expanded(
-                      child: TextField(
-                          decoration:
-                              const InputDecoration(labelText: 'Valid Until'),
-                          readOnly: true,
-                          controller:
-                              TextEditingController(text: 'Dec 8, 2024'))),
-                ],
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                  decoration:
-                      const InputDecoration(labelText: 'Purpose / Remarks'),
-                  maxLines: 3),
-            ],
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Issue Medical Certificate'),
+          content: SizedBox(
+            width: 400,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                DropdownButtonFormField<String>(
+                    value: selectedType,
+                    dropdownColor: AppColors.inputBackground,
+                    style: const TextStyle(color: AppColors.inputText),
+                    decoration: const InputDecoration(
+                        labelText: 'Certificate Type',
+                        hintText: 'Select type'),
+                    items: [
+                      'Medical Certificate',
+                      'Fit to Work',
+                      'Medical Clearance',
+                      'Sick Leave'
+                    ]
+                        .map((e) => DropdownMenuItem(
+                            value: e,
+                            child: Text(e,
+                                style: const TextStyle(
+                                    color: AppColors.inputText))))
+                        .toList(),
+                    onChanged: (v) =>
+                        setDialogState(() => selectedType = v)),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                        child: TextField(
+                            style: const TextStyle(color: AppColors.inputText),
+                            decoration: const InputDecoration(
+                                labelText: 'Valid From',
+                                prefixIcon: Icon(Icons.calendar_today)),
+                            readOnly: true,
+                            controller:
+                                TextEditingController(text: 'Dec 5, 2024'))),
+                    const SizedBox(width: 12),
+                    Expanded(
+                        child: TextField(
+                            style: const TextStyle(color: AppColors.inputText),
+                            decoration: const InputDecoration(
+                                labelText: 'Valid Until',
+                                prefixIcon: Icon(Icons.calendar_today)),
+                            readOnly: true,
+                            controller:
+                                TextEditingController(text: 'Dec 8, 2024'))),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                    style: const TextStyle(color: AppColors.inputText),
+                    decoration: const InputDecoration(
+                        labelText: 'Purpose / Remarks',
+                        hintText: 'Enter purpose or remarks'),
+                    maxLines: 3),
+              ],
+            ),
           ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancel')),
+            ElevatedButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                      content: Text('Certificate issued successfully')));
+                },
+                style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.cardOrange),
+                child: const Text('Issue Certificate')),
+          ],
         ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel')),
-          ElevatedButton(
-              onPressed: () {
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                    content: Text('Certificate issued successfully')));
-              },
-              child: const Text('Issue Certificate')),
-        ],
       ),
     );
   }
 
   void _showFollowUpDialog() {
+    String? selectedTime;
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Schedule Follow-up'),
-        content: SizedBox(
-          width: 400,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                  decoration: const InputDecoration(
-                      labelText: 'Recommended Date',
-                      prefixIcon: Icon(Icons.calendar_today)),
-                  readOnly: true,
-                  controller: TextEditingController(text: 'Dec 12, 2024')),
-              const SizedBox(height: 12),
-              DropdownButtonFormField<String>(
-                  decoration: const InputDecoration(labelText: 'Time Slot'),
-                  items: [
-                    '9:00 AM',
-                    '10:00 AM',
-                    '11:00 AM',
-                    '2:00 PM',
-                    '3:00 PM',
-                    '4:00 PM'
-                  ]
-                      .map((e) => DropdownMenuItem(value: e, child: Text(e)))
-                      .toList(),
-                  onChanged: (_) {}),
-              const SizedBox(height: 12),
-              TextField(
-                  decoration:
-                      const InputDecoration(labelText: 'Reason for Follow-up'),
-                  maxLines: 2),
-            ],
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Schedule Follow-up'),
+          content: SizedBox(
+            width: 400,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                    style: const TextStyle(color: AppColors.inputText),
+                    decoration: const InputDecoration(
+                        labelText: 'Recommended Date',
+                        hintText: 'Select date',
+                        prefixIcon: Icon(Icons.calendar_today)),
+                    readOnly: true,
+                    controller: TextEditingController(text: 'Dec 12, 2024')),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                    value: selectedTime,
+                    dropdownColor: AppColors.inputBackground,
+                    style: const TextStyle(color: AppColors.inputText),
+                    decoration: const InputDecoration(
+                        labelText: 'Time Slot', hintText: 'Select time'),
+                    items: [
+                      '9:00 AM',
+                      '10:00 AM',
+                      '11:00 AM',
+                      '2:00 PM',
+                      '3:00 PM',
+                      '4:00 PM'
+                    ]
+                        .map((e) => DropdownMenuItem(
+                            value: e,
+                            child: Text(e,
+                                style: const TextStyle(
+                                    color: AppColors.inputText))))
+                        .toList(),
+                    onChanged: (v) =>
+                        setDialogState(() => selectedTime = v)),
+                const SizedBox(height: 12),
+                TextField(
+                    style: const TextStyle(color: AppColors.inputText),
+                    decoration: const InputDecoration(
+                        labelText: 'Reason for Follow-up',
+                        hintText: 'Enter reason'),
+                    maxLines: 2),
+              ],
+            ),
           ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancel')),
+            ElevatedButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                      content: Text('Follow-up scheduled successfully')));
+                },
+                style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.cardGreen),
+                child: const Text('Schedule')),
+          ],
         ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel')),
-          ElevatedButton(
-              onPressed: () {
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                    content: Text('Follow-up scheduled successfully')));
-              },
-              child: const Text('Schedule')),
-        ],
       ),
     );
   }
 
   void _showUploadDialog() {
+    String? selectedType;
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Upload Document'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              height: 120,
-              decoration: BoxDecoration(
-                  border: Border.all(color: AppColors.grey300),
-                  borderRadius: BorderRadius.circular(12)),
-              child: Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(Icons.cloud_upload,
-                        size: 40, color: AppColors.grey400),
-                    const SizedBox(height: 8),
-                    TextButton(
-                        onPressed: () {}, child: const Text('Browse files')),
-                  ],
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Upload Document'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                height: 120,
+                decoration: BoxDecoration(
+                    border: Border.all(color: AppColors.grey300),
+                    borderRadius: BorderRadius.circular(12)),
+                child: Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.cloud_upload,
+                          size: 40, color: AppColors.grey400),
+                      const SizedBox(height: 8),
+                      TextButton(
+                          onPressed: () {}, child: const Text('Browse files')),
+                    ],
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(height: 12),
-            DropdownButtonFormField<String>(
-                decoration: const InputDecoration(labelText: 'Document Type'),
-                items: ['Lab Result', 'Imaging', 'Report', 'Other']
-                    .map((e) => DropdownMenuItem(value: e, child: Text(e)))
-                    .toList(),
-                onChanged: (_) {}),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                  value: selectedType,
+                  dropdownColor: AppColors.inputBackground,
+                  style: const TextStyle(color: AppColors.inputText),
+                  decoration: const InputDecoration(
+                      labelText: 'Document Type',
+                      hintText: 'Select document type'),
+                  items: ['Lab Result', 'Imaging', 'Report', 'Other']
+                      .map((e) => DropdownMenuItem(
+                          value: e,
+                          child: Text(e,
+                              style:
+                                  const TextStyle(color: AppColors.inputText))))
+                      .toList(),
+                  onChanged: (v) =>
+                      setDialogState(() => selectedType = v)),
+            ],
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancel')),
+            ElevatedButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                      content: Text('Document uploaded successfully')));
+                },
+                style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary),
+                child: const Text('Upload')),
           ],
         ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel')),
-          ElevatedButton(
-              onPressed: () {
-                Navigator.pop(context);
-              },
-              child: const Text('Upload')),
-        ],
       ),
     );
   }

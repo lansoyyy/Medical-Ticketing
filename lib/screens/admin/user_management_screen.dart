@@ -13,6 +13,7 @@ class _UserManagementScreenState extends State<UserManagementScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
   String _searchQuery = '';
+  String _selectedStatus = 'All Status';
   final TextEditingController _searchController = TextEditingController();
 
   @override
@@ -84,11 +85,13 @@ class _UserManagementScreenState extends State<UserManagementScreen>
                 ),
                 const SizedBox(width: 16),
                 DropdownButton<String>(
-                  value: 'All Status',
+                  value: _selectedStatus,
                   items: ['All Status', 'Active', 'Inactive', 'Pending']
                       .map((s) => DropdownMenuItem(value: s, child: Text(s)))
                       .toList(),
-                  onChanged: (_) {},
+                  onChanged: (value) {
+                    setState(() => _selectedStatus = value ?? 'All Status');
+                  },
                 ),
               ],
             ),
@@ -110,14 +113,46 @@ class _UserManagementScreenState extends State<UserManagementScreen>
   }
 
   Widget _buildUserList(List<Map<String, dynamic>> users, String role) {
-    final filtered = _searchQuery.isEmpty
-        ? users
-        : users
-            .where((u) => u['name']
-                .toString()
-                .toLowerCase()
-                .contains(_searchQuery.toLowerCase()))
-            .toList();
+    var filtered = users;
+
+    // Filter by search query
+    if (_searchQuery.isNotEmpty) {
+      filtered = filtered
+          .where((u) => u['name']
+              .toString()
+              .toLowerCase()
+              .contains(_searchQuery.toLowerCase()))
+          .toList();
+    }
+
+    // Filter by status
+    if (_selectedStatus != 'All Status') {
+      filtered = filtered
+          .where((u) => u['status'] == _selectedStatus)
+          .toList();
+    }
+
+    if (filtered.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.person_off, size: 64, color: AppColors.grey400),
+            const SizedBox(height: 16),
+            Text('No users found',
+                style: AppTextStyles.bodyLarge
+                    .copyWith(color: AppColors.textSecondary)),
+            const SizedBox(height: 8),
+            Text(
+              _selectedStatus != 'All Status'
+                  ? 'No $role with "$_selectedStatus" status'
+                  : 'Try a different search',
+              style: AppTextStyles.bodySmall.copyWith(color: AppColors.textHint),
+            ),
+          ],
+        ),
+      );
+    }
 
     return ListView.builder(
       padding: const EdgeInsets.all(16),
@@ -265,58 +300,114 @@ class _UserManagementScreenState extends State<UserManagementScreen>
   }
 
   void _showAddUserDialog() {
+    String? selectedRole;
+    String? selectedDepartment;
+    final nameController = TextEditingController();
+    final emailController = TextEditingController();
+    final phoneController = TextEditingController();
+
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Add New User'),
-        content: SizedBox(
-          width: 400,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              DropdownButtonFormField<String>(
-                decoration: const InputDecoration(labelText: 'User Role'),
-                items: ['Patient', 'Nurse', 'Doctor', 'Admin']
-                    .map((r) => DropdownMenuItem(value: r, child: Text(r)))
-                    .toList(),
-                onChanged: (_) {},
-              ),
-              const SizedBox(height: 12),
-              const TextField(
-                  decoration: InputDecoration(labelText: 'Full Name')),
-              const SizedBox(height: 12),
-              const TextField(decoration: InputDecoration(labelText: 'Email')),
-              const SizedBox(height: 12),
-              const TextField(decoration: InputDecoration(labelText: 'Phone')),
-              const SizedBox(height: 12),
-              DropdownButtonFormField<String>(
-                decoration: const InputDecoration(labelText: 'Department'),
-                items: [
-                  'General Medicine',
-                  'Pediatrics',
-                  'OB-GYN',
-                  'Surgery',
-                  'Emergency'
-                ]
-                    .map((d) => DropdownMenuItem(value: d, child: Text(d)))
-                    .toList(),
-                onChanged: (_) {},
-              ),
-            ],
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Add New User'),
+          content: SizedBox(
+            width: 400,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                DropdownButtonFormField<String>(
+                  value: selectedRole,
+                  dropdownColor: AppColors.inputBackground,
+                  style: const TextStyle(color: AppColors.inputText),
+                  decoration: const InputDecoration(
+                    labelText: 'User Role',
+                    hintText: 'Select role',
+                  ),
+                  items: ['Patient', 'Nurse', 'Doctor', 'Admin']
+                      .map((r) => DropdownMenuItem(
+                          value: r,
+                          child: Text(r,
+                              style:
+                                  const TextStyle(color: AppColors.inputText))))
+                      .toList(),
+                  onChanged: (value) {
+                    setDialogState(() => selectedRole = value);
+                  },
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: nameController,
+                  style: const TextStyle(color: AppColors.inputText),
+                  decoration: const InputDecoration(
+                    labelText: 'Full Name',
+                    hintText: 'Enter full name',
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: emailController,
+                  style: const TextStyle(color: AppColors.inputText),
+                  keyboardType: TextInputType.emailAddress,
+                  decoration: const InputDecoration(
+                    labelText: 'Email',
+                    hintText: 'Enter email address',
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: phoneController,
+                  style: const TextStyle(color: AppColors.inputText),
+                  keyboardType: TextInputType.phone,
+                  decoration: const InputDecoration(
+                    labelText: 'Phone',
+                    hintText: 'Enter phone number',
+                  ),
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  value: selectedDepartment,
+                  dropdownColor: AppColors.inputBackground,
+                  style: const TextStyle(color: AppColors.inputText),
+                  decoration: const InputDecoration(
+                    labelText: 'Department',
+                    hintText: 'Select department',
+                  ),
+                  items: [
+                    'General Medicine',
+                    'Pediatrics',
+                    'OB-GYN',
+                    'Surgery',
+                    'Emergency'
+                  ]
+                      .map((d) => DropdownMenuItem(
+                          value: d,
+                          child: Text(d,
+                              style:
+                                  const TextStyle(color: AppColors.inputText))))
+                      .toList(),
+                  onChanged: (value) {
+                    setDialogState(() => selectedDepartment = value);
+                  },
+                ),
+              ],
+            ),
           ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancel')),
+            ElevatedButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('User created successfully')));
+                },
+                style:
+                    ElevatedButton.styleFrom(backgroundColor: AppColors.cardOrange),
+                child: const Text('Create User')),
+          ],
         ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel')),
-          ElevatedButton(
-              onPressed: () {
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('User created successfully')));
-              },
-              child: const Text('Create User')),
-        ],
       ),
     );
   }

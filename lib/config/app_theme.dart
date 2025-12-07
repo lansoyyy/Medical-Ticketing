@@ -84,10 +84,25 @@ class AppTheme {
         ),
         hintStyle: AppTextStyles.inputHint,
         labelStyle: AppTextStyles.inputLabel,
+        floatingLabelStyle: AppTextStyles.inputLabelFloating,
         prefixIconColor: AppColors.inputIcon,
         suffixIconColor: AppColors.inputIcon,
       ),
-      cardTheme: CardTheme(
+      dropdownMenuTheme: DropdownMenuThemeData(
+        textStyle: AppTextStyles.inputText,
+        inputDecorationTheme: InputDecorationTheme(
+          filled: true,
+          fillColor: AppColors.inputBackground,
+          labelStyle: AppTextStyles.inputLabel,
+          floatingLabelStyle: AppTextStyles.inputLabelFloating,
+          hintStyle: AppTextStyles.inputHint,
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(8),
+            borderSide: BorderSide.none,
+          ),
+        ),
+      ),
+      cardTheme: CardThemeData(
         color: AppColors.cardBackground,
         elevation: 2,
         shape: RoundedRectangleBorder(

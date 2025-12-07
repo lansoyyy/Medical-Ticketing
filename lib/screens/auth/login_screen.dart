@@ -70,30 +70,41 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Widget _buildRoleChip(String label, IconData icon) {
     final isSelected = _selectedRole == label;
-    return ChoiceChip(
-      label: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            icon,
-            size: 16,
-            color: isSelected ? AppColors.white : AppColors.textSecondary,
-          ),
-          const SizedBox(width: 6),
-          Text(label),
-        ],
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 200),
+      curve: Curves.easeInOut,
+      child: ChoiceChip(
+        label: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 200),
+              child: Icon(
+                icon,
+                key: ValueKey('$label-$isSelected'),
+                size: 16,
+                color: isSelected ? AppColors.white : AppColors.textSecondary,
+              ),
+            ),
+            const SizedBox(width: 6),
+            Text(label),
+          ],
+        ),
+        selected: isSelected,
+        selectedColor: AppColors.primary,
+        backgroundColor: AppColors.grey100,
+        labelStyle: AppTextStyles.bodySmall.copyWith(
+          color: isSelected ? AppColors.white : AppColors.textSecondary,
+        ),
+        showCheckmark: true,
+        checkmarkColor: AppColors.white,
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        onSelected: (_) {
+          setState(() {
+            _selectedRole = label;
+          });
+        },
       ),
-      selected: isSelected,
-      selectedColor: AppColors.primary,
-      backgroundColor: AppColors.grey100,
-      labelStyle: AppTextStyles.bodySmall.copyWith(
-        color: isSelected ? AppColors.white : AppColors.textSecondary,
-      ),
-      onSelected: (_) {
-        setState(() {
-          _selectedRole = label;
-        });
-      },
     );
   }
 
@@ -149,15 +160,27 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
           ),
           const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
+          // Role selection with consistent alignment
+          Row(
             children: [
-              _buildRoleChip('Patient', Icons.person_outline),
-              _buildRoleChip('Nurse', Icons.medical_services_outlined),
-              _buildRoleChip('Doctor', Icons.local_hospital_outlined),
-              _buildRoleChip('Admin', Icons.admin_panel_settings_outlined),
+              Expanded(
+                child: _buildRoleChip('Patient', Icons.person_outline),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _buildRoleChip('Nurse', Icons.medical_services_outlined),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _buildRoleChip('Doctor', Icons.local_hospital_outlined),
+              ),
             ],
+          ),
+          const SizedBox(height: 8),
+          // Admin on separate row for better alignment
+          Align(
+            alignment: Alignment.centerLeft,
+            child: _buildRoleChip('Admin', Icons.admin_panel_settings_outlined),
           ),
           const SizedBox(height: 24),
 

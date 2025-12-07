@@ -260,64 +260,97 @@ class _QueueManagementScreenState extends State<QueueManagementScreen> {
   }
 
   void _showNewTicketDialog() {
+    String? selectedVisitType;
+    bool isUrgent = false;
+    final patientNameController = TextEditingController();
+    final contactController = TextEditingController();
+
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Generate New Ticket'),
-        content: SizedBox(
-          width: 400,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Generate New Ticket'),
+          content: SizedBox(
+            width: 400,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: patientNameController,
+                  style: const TextStyle(color: AppColors.inputText),
                   decoration: const InputDecoration(
-                      labelText: 'Patient Name',
-                      prefixIcon: Icon(Icons.person))),
-              const SizedBox(height: 16),
-              TextField(
+                    labelText: 'Patient Name',
+                    hintText: 'Enter patient name',
+                    prefixIcon: Icon(Icons.person),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: contactController,
+                  style: const TextStyle(color: AppColors.inputText),
+                  keyboardType: TextInputType.phone,
                   decoration: const InputDecoration(
-                      labelText: 'Contact Number',
-                      prefixIcon: Icon(Icons.phone))),
-              const SizedBox(height: 16),
-              DropdownButtonFormField<String>(
-                decoration: const InputDecoration(
-                    labelText: 'Visit Type', prefixIcon: Icon(Icons.category)),
-                items: [
-                  'General Consultation',
-                  'Follow-up',
-                  'Laboratory',
-                  'Pharmacy'
-                ]
-                    .map((e) => DropdownMenuItem(value: e, child: Text(e)))
-                    .toList(),
-                onChanged: (_) {},
-              ),
-              const SizedBox(height: 16),
-              SwitchListTile(
-                title: const Text('Mark as Urgent'),
-                value: false,
-                onChanged: (_) {},
-                secondary:
-                    const Icon(Icons.priority_high, color: AppColors.error),
-              ),
-            ],
+                    labelText: 'Contact Number',
+                    hintText: 'Enter contact number',
+                    prefixIcon: Icon(Icons.phone),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                DropdownButtonFormField<String>(
+                  value: selectedVisitType,
+                  dropdownColor: AppColors.inputBackground,
+                  style: const TextStyle(color: AppColors.inputText),
+                  decoration: const InputDecoration(
+                    labelText: 'Visit Type',
+                    hintText: 'Select visit type',
+                    prefixIcon: Icon(Icons.category),
+                  ),
+                  items: [
+                    'General Consultation',
+                    'Follow-up',
+                    'Laboratory',
+                    'Pharmacy'
+                  ]
+                      .map((e) => DropdownMenuItem(
+                          value: e,
+                          child: Text(e,
+                              style:
+                                  const TextStyle(color: AppColors.inputText))))
+                      .toList(),
+                  onChanged: (value) {
+                    setDialogState(() => selectedVisitType = value);
+                  },
+                ),
+                const SizedBox(height: 16),
+                SwitchListTile(
+                  title: const Text('Mark as Urgent'),
+                  value: isUrgent,
+                  onChanged: (value) {
+                    setDialogState(() => isUrgent = value);
+                  },
+                  activeColor: AppColors.error,
+                  secondary:
+                      const Icon(Icons.priority_high, color: AppColors.error),
+                ),
+              ],
+            ),
           ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancel')),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                    content: Text('Ticket #09 generated successfully')));
+              },
+              style:
+                  ElevatedButton.styleFrom(backgroundColor: AppColors.cardTeal),
+              child: const Text('Generate Ticket'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel')),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                  content: Text('Ticket #09 generated successfully')));
-            },
-            style:
-                ElevatedButton.styleFrom(backgroundColor: AppColors.cardTeal),
-            child: const Text('Generate Ticket'),
-          ),
-        ],
       ),
     );
   }

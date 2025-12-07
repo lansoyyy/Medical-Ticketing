@@ -176,9 +176,174 @@ class _NurseNotificationsScreenState extends State<NurseNotificationsScreen>
 
   void _handleNotificationAction(Map<String, dynamic> notification) {
     setState(() => notification['isUnread'] = false);
-    ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Action: ${notification['action']}')));
+
+    final action = notification['action'];
+    if (action == 'Send Patient') {
+      _showSendPatientDialog(notification);
+    } else if (action == 'View' || action == 'View Results') {
+      _showNotificationDetailsDialog(notification);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Action: $action')));
+    }
   }
+
+  void _showSendPatientDialog(Map<String, dynamic> notification) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: AppColors.cardGreen.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(Icons.send, color: AppColors.cardGreen),
+            ),
+            const SizedBox(width: 12),
+            const Text('Send Next Patient'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: AppColors.grey100,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Next Queue Patient',
+                      style: AppTextStyles.caption
+                          .copyWith(color: AppColors.textSecondary)),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      CircleAvatar(
+                        radius: 20,
+                        backgroundColor: AppColors.cardBlue.withOpacity(0.1),
+                        child: const Text('M',
+                            style: TextStyle(
+                                color: AppColors.cardBlue,
+                                fontWeight: FontWeight.bold)),
+                      ),
+                      const SizedBox(width: 12),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Maria Santos',
+                              style: AppTextStyles.bodyMedium
+                                  .copyWith(fontWeight: FontWeight.w600)),
+                          Text('Queue #02 • Follow-up checkup',
+                              style: AppTextStyles.caption
+                                  .copyWith(color: AppColors.textSecondary)),
+                        ],
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text('Doctor: ${notification['title'].toString().replaceAll(' is now available', '')}',
+                style: AppTextStyles.bodySmall),
+            const SizedBox(height: 8),
+            Text('Room: 105',
+                style: AppTextStyles.bodySmall
+                    .copyWith(color: AppColors.textSecondary)),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton.icon(
+            onPressed: () {
+              Navigator.pop(context);
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Patient notified to proceed to Room 105'),
+                  backgroundColor: AppColors.success,
+                ),
+              );
+            },
+            icon: const Icon(Icons.notifications_active, size: 18),
+            label: const Text('Notify Patient'),
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.cardTeal),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showNotificationDetailsDialog(Map<String, dynamic> notification) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: _getNotificationColor(notification['type']).withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(_getNotificationIcon(notification['type']),
+                  color: _getNotificationColor(notification['type'])),
+            ),
+            const SizedBox(width: 12),
+            Expanded(child: Text(notification['title'], style: AppTextStyles.h6)),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(notification['message'], style: AppTextStyles.bodyMedium),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Icon(Icons.access_time, size: 16, color: AppColors.textHint),
+                const SizedBox(width: 4),
+                Text(notification['time'],
+                    style: AppTextStyles.caption
+                        .copyWith(color: AppColors.textHint)),
+              ],
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+          if (notification['action'] == 'View Results')
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Opening lab results...')),
+                );
+              },
+              style: ElevatedButton.styleFrom(backgroundColor: AppColors.cardTeal),
+              child: const Text('View Results'),
+            ),
+        ],
+      ),
+    );
+  }
+
+  String? _selectedPatient;
+  String? _selectedDoctor;
 
   Widget _buildDoctorAvailabilityTab() {
     return SingleChildScrollView(
@@ -205,29 +370,49 @@ class _NurseNotificationsScreenState extends State<NurseNotificationsScreen>
                   children: [
                     Expanded(
                       child: DropdownButtonFormField<String>(
-                        decoration:
-                            const InputDecoration(labelText: 'Select Patient'),
+                        value: _selectedPatient,
+                        dropdownColor: AppColors.inputBackground,
+                        style: const TextStyle(color: AppColors.inputText),
+                        decoration: const InputDecoration(
+                          labelText: 'Select Patient',
+                          hintText: 'Choose patient',
+                        ),
                         items: [
                           'Queue #02 - Maria Santos',
                           'Queue #03 - Pedro Garcia',
                           'Queue #04 - Ana Reyes'
                         ]
-                            .map((e) =>
-                                DropdownMenuItem(value: e, child: Text(e)))
+                            .map((e) => DropdownMenuItem(
+                                value: e,
+                                child: Text(e,
+                                    style: const TextStyle(
+                                        color: AppColors.inputText))))
                             .toList(),
-                        onChanged: (_) {},
+                        onChanged: (value) {
+                          setState(() => _selectedPatient = value);
+                        },
                       ),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
                       child: DropdownButtonFormField<String>(
-                        decoration:
-                            const InputDecoration(labelText: 'Select Doctor'),
+                        value: _selectedDoctor,
+                        dropdownColor: AppColors.inputBackground,
+                        style: const TextStyle(color: AppColors.inputText),
+                        decoration: const InputDecoration(
+                          labelText: 'Select Doctor',
+                          hintText: 'Choose doctor',
+                        ),
                         items: ['Dr. Maria Santos', 'Dr. Ana Reyes']
-                            .map((e) =>
-                                DropdownMenuItem(value: e, child: Text(e)))
+                            .map((e) => DropdownMenuItem(
+                                value: e,
+                                child: Text(e,
+                                    style: const TextStyle(
+                                        color: AppColors.inputText))))
                             .toList(),
-                        onChanged: (_) {},
+                        onChanged: (value) {
+                          setState(() => _selectedDoctor = value);
+                        },
                       ),
                     ),
                   ],

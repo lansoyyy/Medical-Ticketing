@@ -374,57 +374,74 @@ class _SystemConfigScreenState extends State<SystemConfigScreen>
   }
 
   void _showAddScheduleDialog() {
+    String? selectedDay;
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Add Schedule'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            DropdownButtonFormField<String>(
-                decoration: const InputDecoration(labelText: 'Day/Date'),
-                items: [
-                  'Monday',
-                  'Tuesday',
-                  'Wednesday',
-                  'Thursday',
-                  'Friday',
-                  'Saturday',
-                  'Sunday',
-                  'Specific Date'
-                ]
-                    .map((d) => DropdownMenuItem(value: d, child: Text(d)))
-                    .toList(),
-                onChanged: (_) {}),
-            const SizedBox(height: 12),
-            Row(children: [
-              Expanded(
-                  child: TextField(
-                      decoration:
-                          const InputDecoration(labelText: 'Start Time'),
-                      controller: TextEditingController(text: '8:00 AM'))),
-              const SizedBox(width: 12),
-              Expanded(
-                  child: TextField(
-                      decoration: const InputDecoration(labelText: 'End Time'),
-                      controller: TextEditingController(text: '5:00 PM'))),
-            ]),
-            const SizedBox(height: 12),
-            const TextField(decoration: InputDecoration(labelText: 'Note')),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Add Schedule'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              DropdownButtonFormField<String>(
+                  value: selectedDay,
+                  dropdownColor: AppColors.inputBackground,
+                  style: const TextStyle(color: AppColors.inputText),
+                  decoration: const InputDecoration(
+                      labelText: 'Day/Date', hintText: 'Select day'),
+                  items: [
+                    'Monday',
+                    'Tuesday',
+                    'Wednesday',
+                    'Thursday',
+                    'Friday',
+                    'Saturday',
+                    'Sunday',
+                    'Specific Date'
+                  ]
+                      .map((d) => DropdownMenuItem(
+                          value: d,
+                          child: Text(d,
+                              style:
+                                  const TextStyle(color: AppColors.inputText))))
+                      .toList(),
+                  onChanged: (v) => setDialogState(() => selectedDay = v)),
+              const SizedBox(height: 12),
+              Row(children: [
+                Expanded(
+                    child: TextField(
+                        style: const TextStyle(color: AppColors.inputText),
+                        decoration: const InputDecoration(
+                            labelText: 'Start Time', hintText: '8:00 AM'),
+                        controller: TextEditingController(text: '8:00 AM'))),
+                const SizedBox(width: 12),
+                Expanded(
+                    child: TextField(
+                        style: const TextStyle(color: AppColors.inputText),
+                        decoration: const InputDecoration(
+                            labelText: 'End Time', hintText: '5:00 PM'),
+                        controller: TextEditingController(text: '5:00 PM'))),
+              ]),
+              const SizedBox(height: 12),
+              TextField(
+                  style: const TextStyle(color: AppColors.inputText),
+                  decoration: const InputDecoration(
+                      labelText: 'Note', hintText: 'Enter note')),
+            ],
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancel')),
+            ElevatedButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Schedule added')));
+                },
+                child: const Text('Add')),
           ],
         ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel')),
-          ElevatedButton(
-              onPressed: () {
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Schedule added')));
-              },
-              child: const Text('Add')),
-        ],
       ),
     );
   }
@@ -445,7 +462,9 @@ class _SystemConfigScreenState extends State<SystemConfigScreen>
                         SizedBox(width: 100, child: Text(day)),
                         Expanded(
                             child: TextField(
-                                decoration: InputDecoration(
+                                style:
+                                    const TextStyle(color: AppColors.inputText),
+                                decoration: const InputDecoration(
                                     hintText: '8:00 AM - 5:00 PM'))),
                         Checkbox(value: true, onChanged: (_) {}),
                       ]),
@@ -477,15 +496,23 @@ class _SystemConfigScreenState extends State<SystemConfigScreen>
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const TextField(
-                decoration: InputDecoration(labelText: 'Department Name')),
+            TextField(
+                style: const TextStyle(color: AppColors.inputText),
+                decoration: const InputDecoration(
+                    labelText: 'Department Name',
+                    hintText: 'Enter department name')),
             const SizedBox(height: 12),
-            const TextField(
-                decoration: InputDecoration(labelText: 'Description')),
+            TextField(
+                style: const TextStyle(color: AppColors.inputText),
+                decoration: const InputDecoration(
+                    labelText: 'Description',
+                    hintText: 'Enter description')),
             const SizedBox(height: 12),
-            const TextField(
-                decoration:
-                    InputDecoration(labelText: 'Rooms (comma separated)')),
+            TextField(
+                style: const TextStyle(color: AppColors.inputText),
+                decoration: const InputDecoration(
+                    labelText: 'Rooms (comma separated)',
+                    hintText: 'Room 101, Room 102, ...')),
           ],
         ),
         actions: [
@@ -510,7 +537,9 @@ class _SystemConfigScreenState extends State<SystemConfigScreen>
       builder: (context) => AlertDialog(
         title: Text('Edit: $title'),
         content: TextField(
-            decoration: const InputDecoration(labelText: 'Value'),
+            style: const TextStyle(color: AppColors.inputText),
+            decoration: const InputDecoration(
+                labelText: 'Value', hintText: 'Enter value'),
             controller: TextEditingController(text: currentValue)),
         actions: [
           TextButton(

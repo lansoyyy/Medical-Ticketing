@@ -284,7 +284,7 @@ class _RecordsScreenState extends State<RecordsScreen>
               const SizedBox(width: 12),
               Expanded(
                 child: OutlinedButton.icon(
-                  onPressed: () {},
+                  onPressed: () => _showRefillRequestDialog(prescription),
                   icon: const Icon(Icons.refresh, size: 18),
                   label: const Text('Refill Request'),
                 ),
@@ -324,6 +324,199 @@ class _RecordsScreenState extends State<RecordsScreen>
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  // Available medications for refill request
+  final List<Map<String, String>> _availableMedications = [
+    {'name': 'Metformin', 'dosage': '500mg', 'description': 'Diabetes management'},
+    {'name': 'Lisinopril', 'dosage': '10mg', 'description': 'Blood pressure control'},
+    {'name': 'Cetirizine', 'dosage': '10mg', 'description': 'Antihistamine for allergies'},
+    {'name': 'Amlodipine', 'dosage': '5mg', 'description': 'Calcium channel blocker'},
+    {'name': 'Ibuprofen', 'dosage': '400mg', 'description': 'Pain relief and anti-inflammatory'},
+    {'name': 'Insulin', 'dosage': 'Various', 'description': 'Diabetes management'},
+    {'name': 'Losartan', 'dosage': '50mg', 'description': 'Blood pressure control'},
+    {'name': 'Metoprolol', 'dosage': '25mg', 'description': 'Beta blocker for heart'},
+    {'name': 'Vitamin B1', 'dosage': '100mg', 'description': 'Vitamin supplement'},
+    {'name': 'Aspirin', 'dosage': '81mg', 'description': 'Blood thinner and pain relief'},
+  ];
+
+  void _showRefillRequestDialog(Map<String, dynamic> prescription) {
+    final searchController = TextEditingController();
+    List<Map<String, String>> filteredMeds = List.from(_availableMedications);
+    List<Map<String, String>> selectedMeds = [];
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppColors.cardGreen.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(Icons.medication, color: AppColors.cardGreen),
+              ),
+              const SizedBox(width: 12),
+              const Text('Refill Request'),
+            ],
+          ),
+          content: SizedBox(
+            width: 500,
+            height: 450,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Search Field
+                TextField(
+                  controller: searchController,
+                  style: const TextStyle(color: AppColors.inputText),
+                  decoration: InputDecoration(
+                    hintText: 'Search medications...',
+                    prefixIcon: const Icon(Icons.search),
+                    suffixIcon: searchController.text.isNotEmpty
+                        ? IconButton(
+                            icon: const Icon(Icons.clear),
+                            onPressed: () {
+                              setDialogState(() {
+                                searchController.clear();
+                                filteredMeds = List.from(_availableMedications);
+                              });
+                            },
+                          )
+                        : null,
+                  ),
+                  onChanged: (value) {
+                    setDialogState(() {
+                      filteredMeds = _availableMedications
+                          .where((med) => med['name']!
+                              .toLowerCase()
+                              .contains(value.toLowerCase()))
+                          .toList();
+                    });
+                  },
+                ),
+                const SizedBox(height: 16),
+                
+                // Selected medications
+                if (selectedMeds.isNotEmpty) ...[
+                  Text('Selected Medications (${selectedMeds.length})',
+                      style: AppTextStyles.caption
+                          .copyWith(color: AppColors.textSecondary)),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: selectedMeds.map((med) => Chip(
+                      label: Text('${med['name']} ${med['dosage']}',
+                          style: AppTextStyles.caption),
+                      deleteIcon: const Icon(Icons.close, size: 16),
+                      onDeleted: () {
+                        setDialogState(() {
+                          selectedMeds.remove(med);
+                        });
+                      },
+                      backgroundColor: AppColors.primary.withOpacity(0.1),
+                    )).toList(),
+                  ),
+                  const SizedBox(height: 16),
+                  const Divider(),
+                ],
+                
+                // Medications list
+                Text('Available Medications',
+                    style: AppTextStyles.caption
+                        .copyWith(color: AppColors.textSecondary)),
+                const SizedBox(height: 8),
+                Expanded(
+                  child: ListView.builder(
+                    itemCount: filteredMeds.length,
+                    itemBuilder: (context, index) {
+                      final med = filteredMeds[index];
+                      final isSelected = selectedMeds.contains(med);
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 8),
+                        decoration: BoxDecoration(
+                          color: isSelected
+                              ? AppColors.primary.withOpacity(0.1)
+                              : AppColors.grey100,
+                          borderRadius: BorderRadius.circular(8),
+                          border: isSelected
+                              ? Border.all(color: AppColors.primary, width: 1)
+                              : null,
+                        ),
+                        child: ListTile(
+                          dense: true,
+                          leading: Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: AppColors.cardGreen.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Icon(Icons.medication,
+                                color: AppColors.cardGreen, size: 20),
+                          ),
+                          title: Text(med['name']!,
+                              style: AppTextStyles.bodyMedium
+                                  .copyWith(fontWeight: FontWeight.w600)),
+                          subtitle: Text('${med['dosage']} • ${med['description']}',
+                              style: AppTextStyles.caption
+                                  .copyWith(color: AppColors.textSecondary)),
+                          trailing: isSelected
+                              ? const Icon(Icons.check_circle,
+                                  color: AppColors.primary)
+                              : const Icon(Icons.add_circle_outline,
+                                  color: AppColors.textSecondary),
+                          onTap: () {
+                            setDialogState(() {
+                              if (isSelected) {
+                                selectedMeds.remove(med);
+                              } else {
+                                selectedMeds.add(med);
+                              }
+                            });
+                          },
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton.icon(
+              onPressed: selectedMeds.isEmpty
+                  ? null
+                  : () {
+                      Navigator.pop(context);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                              'Refill request submitted for ${selectedMeds.length} medication(s)'),
+                          backgroundColor: AppColors.success,
+                        ),
+                      );
+                    },
+              icon: const Icon(Icons.send, size: 18),
+              label: Text('Submit Request (${selectedMeds.length})'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: selectedMeds.isEmpty
+                    ? AppColors.grey400
+                    : AppColors.primary,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
