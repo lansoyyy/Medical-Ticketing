@@ -3,6 +3,7 @@
 // Auth Screens
 export 'auth/login_screen.dart';
 export 'auth/register_screen.dart';
+export 'auth/auth_wrapper.dart';
 
 // Patient Screens
 export 'patient/patient_home_screen.dart';

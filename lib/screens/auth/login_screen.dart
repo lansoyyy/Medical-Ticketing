@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../services/auth_service.dart';
 import '../../utils/colors.dart';
 import '../../utils/text_styles.dart';
 import '../../widgets/widgets.dart';
@@ -19,7 +20,9 @@ class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
   final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
+  final AuthService _authService = AuthService();
   String _selectedRole = 'Patient';
+  bool _isLoading = false;
 
   @override
   void dispose() {
@@ -185,28 +188,27 @@ class _LoginScreenState extends State<LoginScreen> {
           const SizedBox(height: 24),
 
           // Login Button
-          PrimaryButton(
-            text: 'Log In',
-            onPressed: _handleLogin,
+          _isLoading
+              ? const Center(
+                  child: CircularProgressIndicator(color: AppColors.primary))
+              : PrimaryButton(
+                  text: 'Log In',
+                  onPressed: _handleLogin,
+                ),
+          const SizedBox(height: 16),
+
+          // Forgot Password Link
+          Center(
+            child: TextButton(
+              onPressed: _showForgotPasswordDialog,
+              child: Text(
+                'Forgot Password?',
+                style:
+                    AppTextStyles.bodySmall.copyWith(color: AppColors.primary),
+              ),
+            ),
           ),
           const SizedBox(height: 32),
-
-          // Guest Access Text
-          Text(
-            'Some features may allow guest access',
-            style: AppTextStyles.bodySmall.copyWith(
-              color: AppColors.primary,
-            ),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 12),
-
-          // Guest Access Button
-          SecondaryButton(
-            text: 'Access as a guest',
-            onPressed: _handleGuestAccess,
-          ),
-          const SizedBox(height: 48),
 
           // Register Link
           Row(
@@ -308,7 +310,8 @@ class _LoginScreenState extends State<LoginScreen> {
             child: Padding(
               padding: const EdgeInsets.all(60),
               child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisAlignment: MainAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   // Medical Icon
                   Container(
@@ -370,6 +373,7 @@ class _LoginScreenState extends State<LoginScreen> {
   Widget _buildFeatureItem(IconData icon, String title, String subtitle) {
     return Row(
       mainAxisSize: MainAxisSize.min,
+      mainAxisAlignment: MainAxisAlignment.start,
       children: [
         Container(
           padding: const EdgeInsets.all(12),
@@ -405,29 +409,61 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  void _handleLogin() {
-    // Navigate to patient home screen (for UI demo)
-    _navigateToRoleHome();
+  Future<void> _handleLogin() async {
+    final email = _usernameController.text.trim();
+    final password = _passwordController.text;
+
+    if (email.isEmpty || password.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('Please enter email and password'),
+            backgroundColor: AppColors.error),
+      );
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    final result = await _authService.loginWithEmailAndPassword(
+      email: email,
+      password: password,
+    );
+
+    setState(() => _isLoading = false);
+
+    if (result.error != null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+              content: Text(result.error!), backgroundColor: AppColors.error),
+        );
+      }
+      return;
+    }
+
+    if (result.user != null && mounted) {
+      _navigateToRoleHome(result.user!.role);
+    }
   }
 
   void _handleGuestAccess() {
-    // Navigate to patient home screen as guest
-    _navigateToRoleHome();
+    // Guest access navigates to patient home without auth
+    _navigateToRoleHome('patient');
   }
 
-  void _navigateToRoleHome() {
+  void _navigateToRoleHome(String role) {
     Widget screen;
-    switch (_selectedRole) {
-      case 'Nurse':
+    switch (role.toLowerCase()) {
+      case 'nurse':
         screen = const NurseHomeScreen();
         break;
-      case 'Doctor':
+      case 'doctor':
         screen = const DoctorHomeScreen();
         break;
-      case 'Admin':
+      case 'admin':
         screen = const AdminHomeScreen();
         break;
-      case 'Patient':
+      case 'patient':
       default:
         screen = const PatientHomeScreen();
         break;
@@ -436,6 +472,55 @@ class _LoginScreenState extends State<LoginScreen> {
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(builder: (context) => screen),
+    );
+  }
+
+  void _showForgotPasswordDialog() {
+    final emailController = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Reset Password'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+                'Enter your email address to receive a password reset link.'),
+            const SizedBox(height: 16),
+            TextField(
+              controller: emailController,
+              decoration: const InputDecoration(
+                labelText: 'Email',
+                prefixIcon: Icon(Icons.email_outlined),
+              ),
+              keyboardType: TextInputType.emailAddress,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              final error =
+                  await _authService.resetPassword(emailController.text);
+              if (context.mounted) {
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(error ?? 'Password reset email sent!'),
+                    backgroundColor:
+                        error != null ? AppColors.error : AppColors.success,
+                  ),
+                );
+              }
+            },
+            child: const Text('Send Reset Link'),
+          ),
+        ],
+      ),
     );
   }
 

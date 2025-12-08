@@ -1,11 +1,7 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
-import 'package:medical_ticketing/screens/admin/admin_home_screen.dart';
-import 'package:medical_ticketing/screens/doctor/doctor_home_screen.dart';
-import 'package:medical_ticketing/screens/nurse/nurse_home_screen.dart';
-import 'package:medical_ticketing/screens/patient/patient_home_screen.dart';
 import 'config/app_theme.dart';
-import 'screens/auth/login_screen.dart';
+import 'screens/auth/auth_wrapper.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -31,7 +27,7 @@ class MyApp extends StatelessWidget {
       title: 'Medical Ticketing System',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme,
-      home: const LoginScreen(),
+      home: const AuthWrapper(),
     );
   }
 }

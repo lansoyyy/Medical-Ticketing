@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import '../../services/auth_service.dart';
 import '../../utils/colors.dart';
 import '../../utils/text_styles.dart';
 import '../../widgets/widgets.dart';
+import '../patient/patient_home_screen.dart';
 import 'login_screen.dart';
 
 class RegisterScreen extends StatefulWidget {
@@ -19,9 +21,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _phoneController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
+  final AuthService _authService = AuthService();
   DateTime? _birthDate;
   String? _selectedGender;
   bool _agreeToTerms = false;
+  bool _isLoading = false;
 
   @override
   void dispose() {
@@ -216,11 +220,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
           const SizedBox(height: 24),
 
           // Register Button
-          PrimaryButton(
-            text: 'Register',
-            onPressed: _handleRegister,
-            backgroundColor: AppColors.primary,
-          ),
+          _isLoading
+              ? const Center(
+                  child: CircularProgressIndicator(color: AppColors.primary))
+              : PrimaryButton(
+                  text: 'Register',
+                  onPressed: _handleRegister,
+                  backgroundColor: AppColors.primary,
+                ),
           const SizedBox(height: 24),
 
           // Login Link
@@ -405,17 +412,84 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
   }
 
-  void _handleRegister() {
-    if (!_agreeToTerms) {
+  Future<void> _handleRegister() async {
+    // Validation
+    if (_firstNameController.text.trim().isEmpty ||
+        _lastNameController.text.trim().isEmpty ||
+        _emailController.text.trim().isEmpty ||
+        _phoneController.text.trim().isEmpty ||
+        _passwordController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please agree to the Terms of Service')),
+        const SnackBar(
+            content: Text('Please fill in all required fields'),
+            backgroundColor: AppColors.error),
       );
       return;
     }
-    // Navigate to login after registration
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(builder: (context) => const LoginScreen()),
+
+    if (_passwordController.text != _confirmPasswordController.text) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('Passwords do not match'),
+            backgroundColor: AppColors.error),
+      );
+      return;
+    }
+
+    if (_passwordController.text.length < 6) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('Password must be at least 6 characters'),
+            backgroundColor: AppColors.error),
+      );
+      return;
+    }
+
+    if (!_agreeToTerms) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('Please agree to the Terms of Service'),
+            backgroundColor: AppColors.error),
+      );
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    final result = await _authService.registerWithEmailAndPassword(
+      email: _emailController.text.trim(),
+      password: _passwordController.text,
+      firstName: _firstNameController.text.trim(),
+      lastName: _lastNameController.text.trim(),
+      phone: _phoneController.text.trim(),
+      role: 'patient', // Default role for self-registration
+      gender: _selectedGender,
+      birthDate: _birthDate,
     );
+
+    setState(() => _isLoading = false);
+
+    if (result.error != null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+              content: Text(result.error!), backgroundColor: AppColors.error),
+        );
+      }
+      return;
+    }
+
+    if (result.user != null && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('Registration successful!'),
+            backgroundColor: AppColors.success),
+      );
+      // Navigate to patient home screen after successful registration
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (context) => const PatientHomeScreen()),
+      );
+    }
   }
 }

@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import '../../models/user_model.dart';
+import '../../services/auth_service.dart';
 import '../../utils/colors.dart';
 import '../../utils/text_styles.dart';
 
@@ -12,22 +15,58 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
+  final AuthService _authService = AuthService();
   bool _isEditing = false;
+  bool _isLoading = true;
+  UserModel? _user;
 
   // Personal Info Controllers
-  final _firstNameController = TextEditingController(text: 'John');
-  final _lastNameController = TextEditingController(text: 'Doe');
-  final _emailController = TextEditingController(text: 'john.doe@email.com');
-  final _phoneController = TextEditingController(text: '+63 912 345 6789');
-  final _addressController =
-      TextEditingController(text: '123 Main Street, Manila, Philippines');
-  DateTime _birthDate = DateTime(1990, 5, 15);
+  final _firstNameController = TextEditingController();
+  final _lastNameController = TextEditingController();
+  final _emailController = TextEditingController();
+  final _phoneController = TextEditingController();
+  final _addressController = TextEditingController();
+  DateTime? _birthDate;
   String _gender = 'Male';
+
+  // Medical Info Controllers
+  final _bloodTypeController = TextEditingController();
+  final _heightController = TextEditingController();
+  final _weightController = TextEditingController();
+  final _emergencyNameController = TextEditingController();
+  final _emergencyRelationController = TextEditingController();
+  final _emergencyPhoneController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
+    _loadUserData();
+  }
+
+  Future<void> _loadUserData() async {
+    final user = await _authService.getCurrentUserData();
+    if (user != null && mounted) {
+      setState(() {
+        _user = user;
+        _firstNameController.text = user.firstName;
+        _lastNameController.text = user.lastName;
+        _emailController.text = user.email;
+        _phoneController.text = user.phone;
+        _addressController.text = user.address ?? '';
+        _birthDate = user.birthDate;
+        _gender = user.gender ?? 'Male';
+        _bloodTypeController.text = user.bloodType ?? '';
+        _heightController.text = user.height ?? '';
+        _weightController.text = user.weight ?? '';
+        _emergencyNameController.text = user.emergencyContactName ?? '';
+        _emergencyRelationController.text = user.emergencyContactRelation ?? '';
+        _emergencyPhoneController.text = user.emergencyContactPhone ?? '';
+        _isLoading = false;
+      });
+    } else {
+      setState(() => _isLoading = false);
+    }
   }
 
   @override
@@ -38,6 +77,12 @@ class _ProfileScreenState extends State<ProfileScreen>
     _emailController.dispose();
     _phoneController.dispose();
     _addressController.dispose();
+    _bloodTypeController.dispose();
+    _heightController.dispose();
+    _weightController.dispose();
+    _emergencyNameController.dispose();
+    _emergencyRelationController.dispose();
+    _emergencyPhoneController.dispose();
     super.dispose();
   }
 
@@ -87,13 +132,16 @@ class _ProfileScreenState extends State<ProfileScreen>
           ],
         ),
       ),
-      body: TabBarView(
-        controller: _tabController,
-        children: [
-          _buildPersonalInfoTab(),
-          _buildMedicalProfileTab(),
-        ],
-      ),
+      body: _isLoading
+          ? const Center(
+              child: CircularProgressIndicator(color: AppColors.primary))
+          : TabBarView(
+              controller: _tabController,
+              children: [
+                _buildPersonalInfoTab(),
+                _buildMedicalProfileTab(),
+              ],
+            ),
     );
   }
 
@@ -119,7 +167,7 @@ class _ProfileScreenState extends State<ProfileScreen>
                     CircleAvatar(
                       radius: 50,
                       backgroundColor: AppColors.primary,
-                      child: Text('JD',
+                      child: Text(_user?.initials ?? 'U',
                           style: AppTextStyles.h2
                               .copyWith(color: AppColors.white)),
                     ),
@@ -140,10 +188,10 @@ class _ProfileScreenState extends State<ProfileScreen>
                   ],
                 ),
                 const SizedBox(height: 16),
-                Text('${_firstNameController.text} ${_lastNameController.text}',
-                    style: AppTextStyles.h4),
+                Text(_user?.fullName ?? 'User', style: AppTextStyles.h4),
                 const SizedBox(height: 4),
-                Text('Patient ID: PT-2024-00123',
+                Text(
+                    'Patient ID: ${_user?.id.substring(0, 8).toUpperCase() ?? 'N/A'}',
                     style: AppTextStyles.bodySmall
                         .copyWith(color: AppColors.textSecondary)),
               ],
@@ -197,11 +245,18 @@ class _ProfileScreenState extends State<ProfileScreen>
               children: [
                 Text('Emergency Contact', style: AppTextStyles.h6),
                 const SizedBox(height: 20),
-                _buildStaticInfoRow('Name', 'Jane Doe', Icons.person_outline),
                 _buildStaticInfoRow(
-                    'Relationship', 'Spouse', Icons.family_restroom),
+                    'Name',
+                    _user?.emergencyContactName ?? 'Not set',
+                    Icons.person_outline),
                 _buildStaticInfoRow(
-                    'Phone', '+63 912 987 6543', Icons.phone_outlined),
+                    'Relationship',
+                    _user?.emergencyContactRelation ?? 'Not set',
+                    Icons.family_restroom),
+                _buildStaticInfoRow(
+                    'Phone',
+                    _user?.emergencyContactPhone ?? 'Not set',
+                    Icons.phone_outlined),
               ],
             ),
           ),
@@ -219,10 +274,10 @@ class _ProfileScreenState extends State<ProfileScreen>
           _buildMedicalCard(
             'Basic Information',
             [
-              _buildMedicalRow('Blood Type', 'O+'),
-              _buildMedicalRow('Height', '175 cm'),
-              _buildMedicalRow('Weight', '70 kg'),
-              _buildMedicalRow('BMI', '22.9 (Normal)'),
+              _buildMedicalRow('Blood Type', _user?.bloodType ?? 'Not set'),
+              _buildMedicalRow('Height', _user?.height ?? 'Not set'),
+              _buildMedicalRow('Weight', _user?.weight ?? 'Not set'),
+              _buildMedicalRow('BMI', _calculateBMI()),
             ],
           ),
           const SizedBox(height: 16),
@@ -231,7 +286,7 @@ class _ProfileScreenState extends State<ProfileScreen>
           _buildMedicalCard(
             'Allergies',
             [
-              _buildTagRow(['Penicillin', 'Aspirin', 'Peanuts']),
+              _buildTagRow(_user?.allergies ?? []),
             ],
             icon: Icons.warning_amber_outlined,
             iconColor: AppColors.cardOrange,
@@ -241,10 +296,15 @@ class _ProfileScreenState extends State<ProfileScreen>
           // Current Medications Card
           _buildMedicalCard(
             'Current Medications',
-            [
-              _buildMedicationRow('Metformin', '500mg', 'Twice daily'),
-              _buildMedicationRow('Lisinopril', '10mg', 'Once daily'),
-            ],
+            _user?.currentMedications?.isNotEmpty == true
+                ? _user!.currentMedications!
+                    .map((med) => _buildMedicationRow(med, '', ''))
+                    .toList()
+                : [
+                    Text('No medications recorded',
+                        style: AppTextStyles.caption
+                            .copyWith(color: AppColors.textHint))
+                  ],
             icon: Icons.medication_outlined,
           ),
           const SizedBox(height: 16),
@@ -252,12 +312,15 @@ class _ProfileScreenState extends State<ProfileScreen>
           // Medical Conditions Card
           _buildMedicalCard(
             'Medical Conditions',
-            [
-              _buildConditionRow(
-                  'Type 2 Diabetes', 'Diagnosed: 2020', 'Ongoing'),
-              _buildConditionRow(
-                  'Hypertension', 'Diagnosed: 2019', 'Controlled'),
-            ],
+            _user?.medicalConditions?.isNotEmpty == true
+                ? _user!.medicalConditions!
+                    .map((cond) => _buildConditionRow(cond, '', 'Ongoing'))
+                    .toList()
+                : [
+                    Text('No conditions recorded',
+                        style: AppTextStyles.caption
+                            .copyWith(color: AppColors.textHint))
+                  ],
             icon: Icons.medical_information_outlined,
           ),
           const SizedBox(height: 16),
@@ -364,13 +427,17 @@ class _ProfileScreenState extends State<ProfileScreen>
                             border: Border.all(color: AppColors.border),
                           ),
                           child: Text(
-                            '${_birthDate.month}/${_birthDate.day}/${_birthDate.year}',
+                            _birthDate != null
+                                ? '${_birthDate!.month}/${_birthDate!.day}/${_birthDate!.year}'
+                                : 'Select date',
                             style: AppTextStyles.bodyMedium,
                           ),
                         ),
                       )
                     : Text(
-                        '${_birthDate.month}/${_birthDate.day}/${_birthDate.year}',
+                        _birthDate != null
+                            ? '${_birthDate!.month}/${_birthDate!.day}/${_birthDate!.year}'
+                            : 'Not set',
                         style: AppTextStyles.bodyMedium,
                       ),
               ],
@@ -649,12 +716,72 @@ class _ProfileScreenState extends State<ProfileScreen>
     );
   }
 
-  void _saveProfile() {
-    setState(() => _isEditing = false);
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-          content: Text('Profile updated successfully'),
-          backgroundColor: AppColors.success),
-    );
+  String _calculateBMI() {
+    if (_user?.height == null || _user?.weight == null) return 'Not available';
+    try {
+      final height =
+          double.tryParse(_user!.height!.replaceAll(RegExp(r'[^0-9.]'), '')) ??
+              0;
+      final weight =
+          double.tryParse(_user!.weight!.replaceAll(RegExp(r'[^0-9.]'), '')) ??
+              0;
+      if (height == 0 || weight == 0) return 'Not available';
+      final heightInMeters = height / 100;
+      final bmi = weight / (heightInMeters * heightInMeters);
+      String category;
+      if (bmi < 18.5)
+        category = 'Underweight';
+      else if (bmi < 25)
+        category = 'Normal';
+      else if (bmi < 30)
+        category = 'Overweight';
+      else
+        category = 'Obese';
+      return '${bmi.toStringAsFixed(1)} ($category)';
+    } catch (e) {
+      return 'Not available';
+    }
+  }
+
+  Future<void> _saveProfile() async {
+    if (_user == null) return;
+
+    setState(() => _isLoading = true);
+
+    final updateData = {
+      'firstName': _firstNameController.text.trim(),
+      'lastName': _lastNameController.text.trim(),
+      'phone': _phoneController.text.trim(),
+      'address': _addressController.text.trim(),
+      'gender': _gender,
+      'birthDate': _birthDate != null ? Timestamp.fromDate(_birthDate!) : null,
+      'bloodType': _bloodTypeController.text.trim(),
+      'height': _heightController.text.trim(),
+      'weight': _weightController.text.trim(),
+      'emergencyContactName': _emergencyNameController.text.trim(),
+      'emergencyContactRelation': _emergencyRelationController.text.trim(),
+      'emergencyContactPhone': _emergencyPhoneController.text.trim(),
+    };
+
+    final error = await _authService.updateUserProfile(_user!.id, updateData);
+
+    setState(() {
+      _isLoading = false;
+      _isEditing = false;
+    });
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(error ?? 'Profile updated successfully'),
+          backgroundColor: error != null ? AppColors.error : AppColors.success,
+        ),
+      );
+    }
+
+    // Reload user data
+    if (error == null) {
+      _loadUserData();
+    }
   }
 }

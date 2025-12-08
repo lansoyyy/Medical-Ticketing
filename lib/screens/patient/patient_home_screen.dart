@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../services/auth_service.dart';
 import '../../utils/colors.dart';
 import '../../utils/text_styles.dart';
 import '../../widgets/dashboard_tile.dart';
@@ -20,6 +21,7 @@ class PatientHomeScreen extends StatefulWidget {
 }
 
 class _PatientHomeScreenState extends State<PatientHomeScreen> {
+  final AuthService _authService = AuthService();
   int _selectedNavIndex = 0;
   bool _isSidebarExpanded = true;
 
@@ -237,11 +239,14 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
             icon: Icons.logout,
             label: 'Logout',
             isExpanded: _isSidebarExpanded,
-            onTap: () {
-              Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(builder: (context) => const LoginScreen()),
-              );
+            onTap: () async {
+              await _authService.logout();
+              if (mounted) {
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(builder: (context) => const LoginScreen()),
+                );
+              }
             },
           ),
           const SizedBox(height: 8),
