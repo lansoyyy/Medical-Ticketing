@@ -1,4 +1,8 @@
 import 'package:flutter/material.dart';
+import '../../models/notification_model.dart';
+import '../../models/user_model.dart';
+import '../../services/auth_service.dart';
+import '../../services/firestore_service.dart';
 import '../../utils/colors.dart';
 import '../../utils/text_styles.dart';
 
@@ -12,12 +16,21 @@ class NurseNotificationsScreen extends StatefulWidget {
 
 class _NurseNotificationsScreenState extends State<NurseNotificationsScreen>
     with SingleTickerProviderStateMixin {
+  final FirestoreService _firestoreService = FirestoreService();
+  final AuthService _authService = AuthService();
   late TabController _tabController;
+  String? _currentUserId;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
+    _loadCurrentUser();
+  }
+
+  Future<void> _loadCurrentUser() async {
+    final user = await _authService.getCurrentUserData();
+    if (mounted && user != null) setState(() => _currentUserId = user.id);
   }
 
   @override
@@ -54,14 +67,137 @@ class _NurseNotificationsScreenState extends State<NurseNotificationsScreen>
   }
 
   Widget _buildNotificationsTab() {
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: _notifications.length,
-      itemBuilder: (context, index) {
-        final notification = _notifications[index];
-        return _buildNotificationCard(notification);
+    if (_currentUserId == null) {
+      return const Center(
+          child: CircularProgressIndicator(color: AppColors.primary));
+    }
+    return StreamBuilder<List<NotificationModel>>(
+      stream: _firestoreService.getUserNotifications(_currentUserId!),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(
+              child: CircularProgressIndicator(color: AppColors.primary));
+        }
+        final notifications = snapshot.data ?? [];
+        if (notifications.isEmpty) {
+          return Center(
+              child: Text('No notifications',
+                  style: AppTextStyles.bodyMedium
+                      .copyWith(color: AppColors.textSecondary)));
+        }
+        return ListView.builder(
+          padding: const EdgeInsets.all(16),
+          itemCount: notifications.length,
+          itemBuilder: (context, index) =>
+              _buildNotificationCardFromModel(notifications[index]),
+        );
       },
     );
+  }
+
+  Widget _buildNotificationCardFromModel(NotificationModel notification) {
+    final iconColor = _getNotificationColorFromType(notification.type);
+    final icon = _getNotificationIconFromType(notification.type);
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: !notification.isRead
+            ? Border.all(color: AppColors.cardTeal.withOpacity(0.3))
+            : null,
+        boxShadow: [
+          BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)
+        ],
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+                color: iconColor.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(10)),
+            child: Icon(icon, color: iconColor, size: 22),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(children: [
+                  Expanded(
+                      child: Text(notification.title,
+                          style: AppTextStyles.bodyMedium.copyWith(
+                              fontWeight: !notification.isRead
+                                  ? FontWeight.w600
+                                  : FontWeight.normal))),
+                  if (!notification.isRead)
+                    Container(
+                        width: 8,
+                        height: 8,
+                        decoration: const BoxDecoration(
+                            color: AppColors.cardTeal, shape: BoxShape.circle)),
+                ]),
+                const SizedBox(height: 4),
+                Text(notification.message,
+                    style: AppTextStyles.bodySmall
+                        .copyWith(color: AppColors.textSecondary)),
+                const SizedBox(height: 8),
+                Row(children: [
+                  Icon(Icons.access_time, size: 14, color: AppColors.textHint),
+                  const SizedBox(width: 4),
+                  Text(_formatTime(notification.createdAt),
+                      style: AppTextStyles.caption
+                          .copyWith(color: AppColors.textHint)),
+                  const Spacer(),
+                  if (!notification.isRead)
+                    TextButton(
+                      onPressed: () => _firestoreService
+                          .markNotificationAsRead(notification.id),
+                      child: const Text('Mark Read'),
+                    ),
+                ]),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Color _getNotificationColorFromType(NotificationType type) {
+    switch (type) {
+      case NotificationType.queue:
+        return AppColors.cardBlue;
+      case NotificationType.appointment:
+        return AppColors.cardGreen;
+      case NotificationType.alert:
+        return AppColors.error;
+      case NotificationType.system:
+        return AppColors.cardPurple;
+    }
+  }
+
+  IconData _getNotificationIconFromType(NotificationType type) {
+    switch (type) {
+      case NotificationType.queue:
+        return Icons.person;
+      case NotificationType.appointment:
+        return Icons.medical_services;
+      case NotificationType.alert:
+        return Icons.priority_high;
+      case NotificationType.system:
+        return Icons.info;
+    }
+  }
+
+  String _formatTime(DateTime dt) {
+    final diff = DateTime.now().difference(dt);
+    if (diff.inMinutes < 60) return '${diff.inMinutes} min ago';
+    if (diff.inHours < 24) return '${diff.inHours} hours ago';
+    return '${diff.inDays} days ago';
   }
 
   Widget _buildNotificationCard(Map<String, dynamic> notification) {
@@ -183,8 +319,8 @@ class _NurseNotificationsScreenState extends State<NurseNotificationsScreen>
     } else if (action == 'View' || action == 'View Results') {
       _showNotificationDetailsDialog(notification);
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Action: $action')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Action: $action')));
     }
   }
 
@@ -252,7 +388,8 @@ class _NurseNotificationsScreenState extends State<NurseNotificationsScreen>
               ),
             ),
             const SizedBox(height: 16),
-            Text('Doctor: ${notification['title'].toString().replaceAll(' is now available', '')}',
+            Text(
+                'Doctor: ${notification['title'].toString().replaceAll(' is now available', '')}',
                 style: AppTextStyles.bodySmall),
             const SizedBox(height: 8),
             Text('Room: 105',
@@ -277,7 +414,8 @@ class _NurseNotificationsScreenState extends State<NurseNotificationsScreen>
             },
             icon: const Icon(Icons.notifications_active, size: 18),
             label: const Text('Notify Patient'),
-            style: ElevatedButton.styleFrom(backgroundColor: AppColors.cardTeal),
+            style:
+                ElevatedButton.styleFrom(backgroundColor: AppColors.cardTeal),
           ),
         ],
       ),
@@ -294,14 +432,16 @@ class _NurseNotificationsScreenState extends State<NurseNotificationsScreen>
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: _getNotificationColor(notification['type']).withOpacity(0.1),
+                color: _getNotificationColor(notification['type'])
+                    .withOpacity(0.1),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Icon(_getNotificationIcon(notification['type']),
                   color: _getNotificationColor(notification['type'])),
             ),
             const SizedBox(width: 12),
-            Expanded(child: Text(notification['title'], style: AppTextStyles.h6)),
+            Expanded(
+                child: Text(notification['title'], style: AppTextStyles.h6)),
           ],
         ),
         content: Column(
@@ -334,7 +474,8 @@ class _NurseNotificationsScreenState extends State<NurseNotificationsScreen>
                   const SnackBar(content: Text('Opening lab results...')),
                 );
               },
-              style: ElevatedButton.styleFrom(backgroundColor: AppColors.cardTeal),
+              style:
+                  ElevatedButton.styleFrom(backgroundColor: AppColors.cardTeal),
               child: const Text('View Results'),
             ),
         ],
@@ -438,7 +579,82 @@ class _NurseNotificationsScreenState extends State<NurseNotificationsScreen>
           // Doctor List
           Text('Doctor Availability', style: AppTextStyles.h6),
           const SizedBox(height: 16),
-          ..._doctors.map((doctor) => _buildDoctorCard(doctor)),
+          StreamBuilder<List<UserModel>>(
+            stream: _firestoreService.getActiveDoctors(),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(
+                    child: CircularProgressIndicator(color: AppColors.primary));
+              }
+              final doctors = snapshot.data ?? [];
+              if (doctors.isEmpty) {
+                return Text('No doctors available',
+                    style: AppTextStyles.bodySmall
+                        .copyWith(color: AppColors.textSecondary));
+              }
+              return Column(
+                  children: doctors
+                      .map((d) => _buildDoctorCardFromModel(d))
+                      .toList());
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDoctorCardFromModel(UserModel doctor) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)
+        ],
+      ),
+      child: Row(
+        children: [
+          CircleAvatar(
+            radius: 24,
+            backgroundColor: AppColors.success.withOpacity(0.1),
+            child: Icon(Icons.person, color: AppColors.success, size: 28),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(doctor.fullName,
+                    style: AppTextStyles.bodyLarge
+                        .copyWith(fontWeight: FontWeight.w600)),
+                Text('Doctor',
+                    style: AppTextStyles.caption
+                        .copyWith(color: AppColors.textSecondary)),
+                const SizedBox(height: 4),
+                Row(children: [
+                  Container(
+                      width: 8,
+                      height: 8,
+                      decoration: BoxDecoration(
+                          color: AppColors.success, shape: BoxShape.circle)),
+                  const SizedBox(width: 6),
+                  Text('Available',
+                      style: AppTextStyles.caption.copyWith(
+                          color: AppColors.success,
+                          fontWeight: FontWeight.w600)),
+                ]),
+              ],
+            ),
+          ),
+          IconButton(
+            onPressed: () {
+              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                  content: Text('Notification sent to ${doctor.fullName}')));
+            },
+            icon: Icon(Icons.notifications_active, color: AppColors.cardTeal),
+          ),
         ],
       ),
     );

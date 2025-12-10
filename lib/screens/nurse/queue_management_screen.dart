@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../../models/ticket_model.dart';
+import '../../services/firestore_service.dart';
 import '../../utils/colors.dart';
 import '../../utils/text_styles.dart';
 
@@ -10,13 +12,12 @@ class QueueManagementScreen extends StatefulWidget {
 }
 
 class _QueueManagementScreenState extends State<QueueManagementScreen> {
+  final FirestoreService _firestoreService = FirestoreService();
   String _selectedFilter = 'All';
-  final List<String> _filters = [
-    'All',
-    'Waiting',
-    'In Consultation',
-    'Completed'
-  ];
+  final List<String> _filters = ['All', 'Waiting', 'In Progress', 'Completed'];
+  int _waitingCount = 0;
+  int _inProgressCount = 0;
+  int _completedCount = 0;
 
   @override
   Widget build(BuildContext context) {
@@ -27,7 +28,9 @@ class _QueueManagementScreenState extends State<QueueManagementScreen> {
         foregroundColor: AppColors.white,
         title: const Text('Queue Management'),
         actions: [
-          IconButton(icon: const Icon(Icons.refresh), onPressed: () {}),
+          IconButton(
+              icon: const Icon(Icons.refresh),
+              onPressed: () => setState(() {})),
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
@@ -36,59 +39,107 @@ class _QueueManagementScreenState extends State<QueueManagementScreen> {
         icon: const Icon(Icons.add),
         label: const Text('New Ticket'),
       ),
-      body: Column(
-        children: [
-          // Stats Bar
-          Container(
-            padding: const EdgeInsets.all(16),
-            color: AppColors.white,
-            child: Row(
-              children: [
-                _buildQuickStat('Waiting', '8', AppColors.cardOrange),
-                _buildQuickStat('In Consultation', '3', AppColors.cardBlue),
-                _buildQuickStat('Completed', '12', AppColors.success),
-                const Spacer(),
-                ElevatedButton.icon(
-                  onPressed: _callNextPatient,
-                  icon: const Icon(Icons.campaign),
-                  label: const Text('Call Next'),
-                  style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.cardBlue),
+      body: StreamBuilder<List<TicketModel>>(
+        stream: _firestoreService.getTodayTickets(),
+        builder: (context, snapshot) {
+          final allTickets = snapshot.data ?? [];
+
+          // Update counts
+          _waitingCount = allTickets
+              .where((t) =>
+                  t.status == TicketStatus.waiting ||
+                  t.status == TicketStatus.called)
+              .length;
+          _inProgressCount = allTickets
+              .where((t) => t.status == TicketStatus.inProgress)
+              .length;
+          _completedCount = allTickets
+              .where((t) => t.status == TicketStatus.completed)
+              .length;
+
+          // Filter tickets
+          final tickets = _selectedFilter == 'All'
+              ? allTickets
+              : allTickets.where((t) => _matchesFilter(t.status)).toList();
+
+          return Column(
+            children: [
+              // Stats Bar
+              Container(
+                padding: const EdgeInsets.all(16),
+                color: AppColors.white,
+                child: Row(
+                  children: [
+                    _buildQuickStat(
+                        'Waiting', '$_waitingCount', AppColors.cardOrange),
+                    _buildQuickStat(
+                        'In Progress', '$_inProgressCount', AppColors.cardBlue),
+                    _buildQuickStat(
+                        'Completed', '$_completedCount', AppColors.success),
+                    const Spacer(),
+                    ElevatedButton.icon(
+                      onPressed: () => _callNextPatient(allTickets),
+                      icon: const Icon(Icons.campaign),
+                      label: const Text('Call Next'),
+                      style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.cardBlue),
+                    ),
+                  ],
                 ),
-              ],
-            ),
-          ),
-          // Filter Chips
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            color: AppColors.white,
-            child: Row(
-              children: _filters
-                  .map((f) => Padding(
-                        padding: const EdgeInsets.only(right: 8),
-                        child: FilterChip(
-                          label: Text(f),
-                          selected: _selectedFilter == f,
-                          selectedColor: AppColors.cardTeal.withOpacity(0.2),
-                          onSelected: (s) =>
-                              setState(() => _selectedFilter = f),
-                        ),
-                      ))
-                  .toList(),
-            ),
-          ),
-          // Queue List
-          Expanded(
-            child: ListView.builder(
-              padding: const EdgeInsets.all(16),
-              itemCount: _queueList.length,
-              itemBuilder: (context, index) =>
-                  _buildQueueCard(_queueList[index]),
-            ),
-          ),
-        ],
+              ),
+              // Filter Chips
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                color: AppColors.white,
+                child: Row(
+                  children: _filters
+                      .map((f) => Padding(
+                            padding: const EdgeInsets.only(right: 8),
+                            child: FilterChip(
+                              label: Text(f),
+                              selected: _selectedFilter == f,
+                              selectedColor:
+                                  AppColors.cardTeal.withOpacity(0.2),
+                              onSelected: (s) =>
+                                  setState(() => _selectedFilter = f),
+                            ),
+                          ))
+                      .toList(),
+                ),
+              ),
+              // Queue List
+              Expanded(
+                child: tickets.isEmpty
+                    ? Center(
+                        child: Text('No tickets',
+                            style: AppTextStyles.bodyMedium
+                                .copyWith(color: AppColors.textSecondary)))
+                    : ListView.builder(
+                        padding: const EdgeInsets.all(16),
+                        itemCount: tickets.length,
+                        itemBuilder: (context, index) =>
+                            _buildQueueCard(tickets[index]),
+                      ),
+              ),
+            ],
+          );
+        },
       ),
     );
+  }
+
+  bool _matchesFilter(TicketStatus status) {
+    switch (_selectedFilter) {
+      case 'Waiting':
+        return status == TicketStatus.waiting || status == TicketStatus.called;
+      case 'In Progress':
+        return status == TicketStatus.inProgress;
+      case 'Completed':
+        return status == TicketStatus.completed;
+      default:
+        return true;
+    }
   }
 
   Widget _buildQuickStat(String label, String value, Color color) {
@@ -113,9 +164,9 @@ class _QueueManagementScreenState extends State<QueueManagementScreen> {
     );
   }
 
-  Widget _buildQueueCard(Map<String, dynamic> patient) {
-    final statusColor = _getStatusColor(patient['status']);
-    final isUrgent = patient['urgent'] == true;
+  Widget _buildQueueCard(TicketModel ticket) {
+    final statusColor = _getTicketStatusColor(ticket.status);
+    final isUrgent = ticket.priority == TicketPriority.emergency;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -144,7 +195,7 @@ class _QueueManagementScreenState extends State<QueueManagementScreen> {
                   ),
                   child: Center(
                     child: Text(
-                      patient['queue'],
+                      '${ticket.queueNumber}',
                       style: AppTextStyles.h4.copyWith(
                           color: statusColor, fontWeight: FontWeight.bold),
                     ),
@@ -157,7 +208,7 @@ class _QueueManagementScreenState extends State<QueueManagementScreen> {
                     children: [
                       Row(
                         children: [
-                          Text(patient['name'],
+                          Text(ticket.patientName,
                               style: AppTextStyles.bodyLarge
                                   .copyWith(fontWeight: FontWeight.w600)),
                           if (isUrgent) ...[
@@ -177,7 +228,8 @@ class _QueueManagementScreenState extends State<QueueManagementScreen> {
                         ],
                       ),
                       const SizedBox(height: 4),
-                      Text('${patient['type']} • ${patient['time']}',
+                      Text(
+                          '${ticket.chiefComplaint ?? "General"} • ${_formatTime(ticket.createdAt)}',
                           style: AppTextStyles.bodySmall
                               .copyWith(color: AppColors.textSecondary)),
                     ],
@@ -189,7 +241,7 @@ class _QueueManagementScreenState extends State<QueueManagementScreen> {
                   decoration: BoxDecoration(
                       color: statusColor.withOpacity(0.1),
                       borderRadius: BorderRadius.circular(20)),
-                  child: Text(patient['status'],
+                  child: Text(ticket.statusDisplay,
                       style: AppTextStyles.caption.copyWith(
                           color: statusColor, fontWeight: FontWeight.w600)),
                 ),
@@ -201,33 +253,32 @@ class _QueueManagementScreenState extends State<QueueManagementScreen> {
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
             child: Row(
               children: [
-                if (patient['status'] == 'Waiting') ...[
+                if (ticket.status == TicketStatus.waiting) ...[
                   _buildActionButton('Call', Icons.campaign, AppColors.cardBlue,
-                      () => _callPatient(patient)),
+                      () => _callTicket(ticket)),
                   const SizedBox(width: 8),
                   _buildActionButton('Prioritize', Icons.priority_high,
-                      AppColors.cardOrange, () => _prioritizePatient(patient)),
+                      AppColors.cardOrange, () => _prioritizeTicket(ticket)),
                 ],
-                if (patient['status'] == 'In Consultation') ...[
+                if (ticket.status == TicketStatus.called ||
+                    ticket.status == TicketStatus.inProgress) ...[
                   _buildActionButton('Complete', Icons.check_circle,
-                      AppColors.success, () => _completePatient(patient)),
+                      AppColors.success, () => _completeTicket(ticket)),
                 ],
                 const Spacer(),
                 _buildActionButton('View', Icons.visibility,
-                    AppColors.textSecondary, () => _viewPatient(patient)),
+                    AppColors.textSecondary, () => _viewTicket(ticket)),
                 const SizedBox(width: 8),
                 PopupMenuButton(
                   icon: const Icon(Icons.more_vert,
                       color: AppColors.textSecondary),
                   itemBuilder: (context) => [
                     const PopupMenuItem(
-                        value: 'vitals', child: Text('Record Vitals')),
-                    const PopupMenuItem(
                         value: 'forward', child: Text('Forward to Doctor')),
                     const PopupMenuItem(
                         value: 'cancel', child: Text('Cancel Ticket')),
                   ],
-                  onSelected: (value) => _handleMenuAction(value, patient),
+                  onSelected: (value) => _handleMenuAction(value, ticket),
                 ),
               ],
             ),
@@ -246,16 +297,120 @@ class _QueueManagementScreenState extends State<QueueManagementScreen> {
     );
   }
 
-  Color _getStatusColor(String status) {
+  Color _getTicketStatusColor(TicketStatus status) {
     switch (status) {
-      case 'Waiting':
+      case TicketStatus.waiting:
         return AppColors.cardOrange;
-      case 'In Consultation':
+      case TicketStatus.called:
+      case TicketStatus.inProgress:
         return AppColors.cardBlue;
-      case 'Completed':
+      case TicketStatus.completed:
         return AppColors.success;
-      default:
-        return AppColors.textSecondary;
+      case TicketStatus.cancelled:
+      case TicketStatus.noShow:
+        return AppColors.error;
+    }
+  }
+
+  String _formatTime(DateTime dateTime) {
+    final hour = dateTime.hour > 12 ? dateTime.hour - 12 : dateTime.hour;
+    final amPm = dateTime.hour >= 12 ? 'PM' : 'AM';
+    return '${hour == 0 ? 12 : hour}:${dateTime.minute.toString().padLeft(2, '0')} $amPm';
+  }
+
+  void _callTicket(TicketModel ticket) async {
+    await _firestoreService.callPatient(ticket.id);
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Calling ${ticket.patientName}...')));
+    }
+  }
+
+  void _prioritizeTicket(TicketModel ticket) async {
+    await _firestoreService
+        .updateTicket(ticket.id, {'priority': TicketPriority.emergency.name});
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('${ticket.patientName} marked as urgent')));
+    }
+  }
+
+  void _completeTicket(TicketModel ticket) async {
+    await _firestoreService.completeTicket(ticket.id);
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('${ticket.patientName} consultation completed')));
+    }
+  }
+
+  void _viewTicket(TicketModel ticket) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (context) => Container(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+                child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                        color: AppColors.grey300,
+                        borderRadius: BorderRadius.circular(2)))),
+            const SizedBox(height: 20),
+            Row(children: [
+              CircleAvatar(
+                  radius: 30,
+                  backgroundColor: AppColors.primary.withOpacity(0.1),
+                  child: Text(ticket.patientName[0],
+                      style:
+                          AppTextStyles.h4.copyWith(color: AppColors.primary))),
+              const SizedBox(width: 16),
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(ticket.patientName, style: AppTextStyles.h5),
+                Text(
+                    'Queue #${ticket.queueNumber} • ${ticket.chiefComplaint ?? "General"}',
+                    style: AppTextStyles.bodySmall
+                        .copyWith(color: AppColors.textSecondary)),
+              ]),
+            ]),
+            const SizedBox(height: 24),
+            _buildInfoRow('Status', ticket.statusDisplay),
+            _buildInfoRow('Time In', _formatTime(ticket.createdAt)),
+            _buildInfoRow('Priority', ticket.priorityDisplay),
+            if (ticket.department != null)
+              _buildInfoRow('Department', ticket.department!),
+            const SizedBox(height: 24),
+            SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () => Navigator.pop(context),
+                  style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.cardTeal),
+                  child: const Text('Close'),
+                )),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _handleMenuAction(String action, TicketModel ticket) async {
+    switch (action) {
+      case 'forward':
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text('${ticket.patientName} forwarded to doctor')));
+        break;
+      case 'cancel':
+        await _firestoreService.cancelTicket(ticket.id);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text('Ticket for ${ticket.patientName} cancelled')));
+        break;
     }
   }
 
@@ -355,7 +510,16 @@ class _QueueManagementScreenState extends State<QueueManagementScreen> {
     );
   }
 
-  void _callNextPatient() {
+  void _callNextPatient(List<TicketModel> tickets) {
+    final waitingTickets =
+        tickets.where((t) => t.status == TicketStatus.waiting).toList();
+    if (waitingTickets.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No patients waiting in queue')));
+      return;
+    }
+
+    final nextTicket = waitingTickets.first;
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -367,114 +531,29 @@ class _QueueManagementScreenState extends State<QueueManagementScreen> {
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text('Queue #02',
+            Text('Queue #${nextTicket.queueNumber}',
                 style: AppTextStyles.h3.copyWith(color: AppColors.cardBlue)),
             const SizedBox(height: 8),
-            Text('Maria Santos', style: AppTextStyles.h5),
+            Text(nextTicket.patientName, style: AppTextStyles.h5),
             const SizedBox(height: 16),
             const Text(
-                'Patient has been notified. Please wait for them to arrive.'),
+                'Patient will be notified. Please wait for them to arrive.'),
           ],
         ),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('Skip')),
+              child: const Text('Cancel')),
           ElevatedButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Confirm')),
-        ],
-      ),
-    );
-  }
-
-  void _callPatient(Map<String, dynamic> patient) {
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text('Calling ${patient['name']}...')));
-  }
-
-  void _prioritizePatient(Map<String, dynamic> patient) {
-    ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('${patient['name']} marked as urgent')));
-  }
-
-  void _completePatient(Map<String, dynamic> patient) {
-    ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('${patient['name']} consultation completed')));
-  }
-
-  void _viewPatient(Map<String, dynamic> patient) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (context) => DraggableScrollableSheet(
-        initialChildSize: 0.7,
-        minChildSize: 0.5,
-        maxChildSize: 0.95,
-        expand: false,
-        builder: (context, scrollController) => SingleChildScrollView(
-          controller: scrollController,
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(
-                  child: Container(
-                      width: 40,
-                      height: 4,
-                      decoration: BoxDecoration(
-                          color: AppColors.grey300,
-                          borderRadius: BorderRadius.circular(2)))),
-              const SizedBox(height: 20),
-              Row(
-                children: [
-                  CircleAvatar(
-                      radius: 30,
-                      backgroundColor: AppColors.primary.withOpacity(0.1),
-                      child: Text(patient['name'][0],
-                          style: AppTextStyles.h4
-                              .copyWith(color: AppColors.primary))),
-                  const SizedBox(width: 16),
-                  Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(patient['name'], style: AppTextStyles.h5),
-                        Text('Queue #${patient['queue']} • ${patient['type']}',
-                            style: AppTextStyles.bodySmall
-                                .copyWith(color: AppColors.textSecondary)),
-                      ]),
-                ],
-              ),
-              const SizedBox(height: 24),
-              _buildInfoRow('Status', patient['status']),
-              _buildInfoRow('Time In', patient['time']),
-              _buildInfoRow('Contact', '+63 912 345 6789'),
-              _buildInfoRow('Reason', 'General Consultation'),
-              const Divider(height: 32),
-              Text('Vital Signs', style: AppTextStyles.h6),
-              const SizedBox(height: 12),
-              Row(children: [
-                Expanded(child: _buildVitalCard('BP', '120/80', 'mmHg')),
-                const SizedBox(width: 12),
-                Expanded(child: _buildVitalCard('Temp', '36.5', '°C')),
-                const SizedBox(width: 12),
-                Expanded(child: _buildVitalCard('Weight', '65', 'kg')),
-              ]),
-              const SizedBox(height: 24),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: () => Navigator.pop(context),
-                  style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.cardTeal),
-                  child: const Text('Forward to Doctor'),
-                ),
-              ),
-            ],
+            onPressed: () async {
+              await _firestoreService.callPatient(nextTicket.id);
+              Navigator.pop(context);
+              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                  content: Text('${nextTicket.patientName} has been called')));
+            },
+            child: const Text('Confirm Call'),
           ),
-        ),
+        ],
       ),
     );
   }
@@ -495,181 +574,4 @@ class _QueueManagementScreenState extends State<QueueManagementScreen> {
       ),
     );
   }
-
-  Widget _buildVitalCard(String label, String value, String unit) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-          color: AppColors.grey100, borderRadius: BorderRadius.circular(8)),
-      child: Column(
-        children: [
-          Text(label,
-              style: AppTextStyles.caption
-                  .copyWith(color: AppColors.textSecondary)),
-          const SizedBox(height: 4),
-          Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-            Text(value,
-                style: AppTextStyles.h5.copyWith(color: AppColors.primary)),
-            Text(' $unit', style: AppTextStyles.caption),
-          ]),
-        ],
-      ),
-    );
-  }
-
-  void _handleMenuAction(String action, Map<String, dynamic> patient) {
-    switch (action) {
-      case 'vitals':
-        _showRecordVitalsDialog(patient);
-        break;
-      case 'forward':
-        _showForwardDialog(patient);
-        break;
-      case 'cancel':
-        ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Ticket for ${patient['name']} cancelled')));
-        break;
-    }
-  }
-
-  void _showRecordVitalsDialog(Map<String, dynamic> patient) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Record Vitals - ${patient['name']}'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-                decoration: const InputDecoration(
-                    labelText: 'Blood Pressure', suffixText: 'mmHg')),
-            const SizedBox(height: 12),
-            TextField(
-                decoration: const InputDecoration(
-                    labelText: 'Temperature', suffixText: '°C')),
-            const SizedBox(height: 12),
-            TextField(
-                decoration: const InputDecoration(
-                    labelText: 'Weight', suffixText: 'kg')),
-            const SizedBox(height: 12),
-            TextField(
-                decoration: const InputDecoration(
-                    labelText: 'Heart Rate', suffixText: 'bpm')),
-          ],
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel')),
-          ElevatedButton(
-              onPressed: () {
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                    content: Text('Vitals recorded successfully')));
-              },
-              child: const Text('Save')),
-        ],
-      ),
-    );
-  }
-
-  void _showForwardDialog(Map<String, dynamic> patient) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Forward Patient'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text('Forward ${patient['name']} to:',
-                style: AppTextStyles.bodyMedium),
-            const SizedBox(height: 16),
-            ListTile(
-              leading:
-                  const Icon(Icons.medical_services, color: AppColors.cardBlue),
-              title: const Text('Doctor'),
-              subtitle: const Text('For consultation'),
-              onTap: () {
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                    content: Text('Patient forwarded to doctor')));
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.science, color: AppColors.cardPurple),
-              title: const Text('Laboratory'),
-              subtitle: const Text('For lab tests'),
-              onTap: () {
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                    content: Text('Patient forwarded to laboratory')));
-              },
-            ),
-            ListTile(
-              leading:
-                  const Icon(Icons.local_pharmacy, color: AppColors.cardGreen),
-              title: const Text('Pharmacy'),
-              subtitle: const Text('For medications'),
-              onTap: () {
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                    content: Text('Patient forwarded to pharmacy')));
-              },
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  final List<Map<String, dynamic>> _queueList = [
-    {
-      'queue': '01',
-      'name': 'Juan Dela Cruz',
-      'type': 'Walk-in',
-      'status': 'In Consultation',
-      'time': '8:30 AM',
-      'urgent': false
-    },
-    {
-      'queue': '02',
-      'name': 'Maria Santos',
-      'type': 'Appointment',
-      'status': 'Waiting',
-      'time': '8:45 AM',
-      'urgent': true
-    },
-    {
-      'queue': '03',
-      'name': 'Pedro Garcia',
-      'type': 'Walk-in',
-      'status': 'Waiting',
-      'time': '9:00 AM',
-      'urgent': false
-    },
-    {
-      'queue': '04',
-      'name': 'Ana Reyes',
-      'type': 'Follow-up',
-      'status': 'Waiting',
-      'time': '9:15 AM',
-      'urgent': false
-    },
-    {
-      'queue': '05',
-      'name': 'Jose Rizal',
-      'type': 'Walk-in',
-      'status': 'Waiting',
-      'time': '9:30 AM',
-      'urgent': false
-    },
-    {
-      'queue': '06',
-      'name': 'Rosa Luna',
-      'type': 'Walk-in',
-      'status': 'Waiting',
-      'time': '9:45 AM',
-      'urgent': true
-    },
-  ];
 }

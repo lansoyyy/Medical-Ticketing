@@ -33,6 +33,9 @@ class _ProfileScreenState extends State<ProfileScreen>
   final _bloodTypeController = TextEditingController();
   final _heightController = TextEditingController();
   final _weightController = TextEditingController();
+  final _allergiesController = TextEditingController();
+  final _medicationsController = TextEditingController();
+  final _conditionsController = TextEditingController();
   final _emergencyNameController = TextEditingController();
   final _emergencyRelationController = TextEditingController();
   final _emergencyPhoneController = TextEditingController();
@@ -59,6 +62,10 @@ class _ProfileScreenState extends State<ProfileScreen>
         _bloodTypeController.text = user.bloodType ?? '';
         _heightController.text = user.height ?? '';
         _weightController.text = user.weight ?? '';
+        _allergiesController.text = (user.allergies ?? []).join(', ');
+        _medicationsController.text =
+            (user.currentMedications ?? []).join(', ');
+        _conditionsController.text = (user.medicalConditions ?? []).join(', ');
         _emergencyNameController.text = user.emergencyContactName ?? '';
         _emergencyRelationController.text = user.emergencyContactRelation ?? '';
         _emergencyPhoneController.text = user.emergencyContactPhone ?? '';
@@ -80,6 +87,9 @@ class _ProfileScreenState extends State<ProfileScreen>
     _bloodTypeController.dispose();
     _heightController.dispose();
     _weightController.dispose();
+    _allergiesController.dispose();
+    _medicationsController.dispose();
+    _conditionsController.dispose();
     _emergencyNameController.dispose();
     _emergencyRelationController.dispose();
     _emergencyPhoneController.dispose();
@@ -142,6 +152,72 @@ class _ProfileScreenState extends State<ProfileScreen>
                 _buildMedicalProfileTab(),
               ],
             ),
+    );
+  }
+
+  Widget _buildEditableMedicalRow(
+      String label, TextEditingController controller,
+      {TextInputType keyboardType = TextInputType.text}) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              label,
+              style: AppTextStyles.bodyMedium
+                  .copyWith(color: AppColors.textSecondary),
+            ),
+          ),
+          const SizedBox(width: 16),
+          SizedBox(
+            width: 160,
+            child: _isEditing
+                ? TextField(
+                    controller: controller,
+                    keyboardType: keyboardType,
+                    style: AppTextStyles.bodyMedium,
+                    decoration: InputDecoration(
+                      isDense: true,
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 8),
+                      border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8)),
+                      filled: true,
+                      fillColor: AppColors.grey100,
+                    ),
+                  )
+                : Text(
+                    controller.text.isEmpty ? 'Not set' : controller.text,
+                    style: AppTextStyles.bodyMedium
+                        .copyWith(fontWeight: FontWeight.w600),
+                    textAlign: TextAlign.right,
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMedicalTextArea({
+    required TextEditingController controller,
+    required String hintText,
+  }) {
+    return TextField(
+      controller: controller,
+      maxLines: 3,
+      style: AppTextStyles.bodyMedium,
+      decoration: InputDecoration(
+        hintText: hintText,
+        helperText: 'Separate multiple items with commas',
+        helperStyle:
+            AppTextStyles.caption.copyWith(color: AppColors.textSecondary),
+        alignLabelWithHint: true,
+        contentPadding: const EdgeInsets.all(12),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+        filled: true,
+        fillColor: AppColors.grey100,
+      ),
     );
   }
 
@@ -274,9 +350,17 @@ class _ProfileScreenState extends State<ProfileScreen>
           _buildMedicalCard(
             'Basic Information',
             [
-              _buildMedicalRow('Blood Type', _user?.bloodType ?? 'Not set'),
-              _buildMedicalRow('Height', _user?.height ?? 'Not set'),
-              _buildMedicalRow('Weight', _user?.weight ?? 'Not set'),
+              _buildEditableMedicalRow('Blood Type', _bloodTypeController),
+              _buildEditableMedicalRow(
+                'Height (cm)',
+                _heightController,
+                keyboardType: TextInputType.number,
+              ),
+              _buildEditableMedicalRow(
+                'Weight (kg)',
+                _weightController,
+                keyboardType: TextInputType.number,
+              ),
               _buildMedicalRow('BMI', _calculateBMI()),
             ],
           ),
@@ -286,7 +370,19 @@ class _ProfileScreenState extends State<ProfileScreen>
           _buildMedicalCard(
             'Allergies',
             [
-              _buildTagRow(_user?.allergies ?? []),
+              if (_isEditing)
+                _buildMedicalTextArea(
+                  controller: _allergiesController,
+                  hintText: 'e.g. Penicillin, Aspirin, Peanuts',
+                )
+              else if ((_user?.allergies ?? []).isNotEmpty)
+                _buildTagRow(_user!.allergies!)
+              else
+                Text(
+                  'No allergies recorded',
+                  style:
+                      AppTextStyles.caption.copyWith(color: AppColors.textHint),
+                ),
             ],
             icon: Icons.warning_amber_outlined,
             iconColor: AppColors.cardOrange,
@@ -296,15 +392,24 @@ class _ProfileScreenState extends State<ProfileScreen>
           // Current Medications Card
           _buildMedicalCard(
             'Current Medications',
-            _user?.currentMedications?.isNotEmpty == true
-                ? _user!.currentMedications!
+            [
+              if (_isEditing)
+                _buildMedicalTextArea(
+                  controller: _medicationsController,
+                  hintText:
+                      'e.g. Metformin 500mg twice daily, Lisinopril 10mg once daily',
+                )
+              else if ((_user?.currentMedications ?? []).isNotEmpty)
+                ..._user!.currentMedications!
                     .map((med) => _buildMedicationRow(med, '', ''))
                     .toList()
-                : [
-                    Text('No medications recorded',
-                        style: AppTextStyles.caption
-                            .copyWith(color: AppColors.textHint))
-                  ],
+              else
+                Text(
+                  'No medications recorded',
+                  style:
+                      AppTextStyles.caption.copyWith(color: AppColors.textHint),
+                ),
+            ],
             icon: Icons.medication_outlined,
           ),
           const SizedBox(height: 16),
@@ -312,38 +417,26 @@ class _ProfileScreenState extends State<ProfileScreen>
           // Medical Conditions Card
           _buildMedicalCard(
             'Medical Conditions',
-            _user?.medicalConditions?.isNotEmpty == true
-                ? _user!.medicalConditions!
+            [
+              if (_isEditing)
+                _buildMedicalTextArea(
+                  controller: _conditionsController,
+                  hintText: 'e.g. Type 2 Diabetes, Hypertension',
+                )
+              else if ((_user?.medicalConditions ?? []).isNotEmpty)
+                ..._user!.medicalConditions!
                     .map((cond) => _buildConditionRow(cond, '', 'Ongoing'))
                     .toList()
-                : [
-                    Text('No conditions recorded',
-                        style: AppTextStyles.caption
-                            .copyWith(color: AppColors.textHint))
-                  ],
+              else
+                Text(
+                  'No conditions recorded',
+                  style:
+                      AppTextStyles.caption.copyWith(color: AppColors.textHint),
+                ),
+            ],
             icon: Icons.medical_information_outlined,
           ),
           const SizedBox(height: 16),
-
-          // Past Surgeries Card
-          _buildMedicalCard(
-            'Past Surgeries',
-            [
-              _buildSurgeryRow('Appendectomy', 'March 2015', 'City Hospital'),
-            ],
-            icon: Icons.local_hospital_outlined,
-          ),
-          const SizedBox(height: 16),
-
-          // Family Medical History
-          _buildMedicalCard(
-            'Family Medical History',
-            [
-              _buildFamilyHistoryRow('Father', 'Heart Disease, Diabetes'),
-              _buildFamilyHistoryRow('Mother', 'Hypertension'),
-            ],
-            icon: Icons.family_restroom_outlined,
-          ),
         ],
       ),
     );
@@ -716,6 +809,14 @@ class _ProfileScreenState extends State<ProfileScreen>
     );
   }
 
+  List<String> _parseCommaSeparatedList(String value) {
+    return value
+        .split(',')
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty)
+        .toList();
+  }
+
   String _calculateBMI() {
     if (_user?.height == null || _user?.weight == null) return 'Not available';
     try {
@@ -758,6 +859,10 @@ class _ProfileScreenState extends State<ProfileScreen>
       'bloodType': _bloodTypeController.text.trim(),
       'height': _heightController.text.trim(),
       'weight': _weightController.text.trim(),
+      'allergies': _parseCommaSeparatedList(_allergiesController.text),
+      'currentMedications':
+          _parseCommaSeparatedList(_medicationsController.text),
+      'medicalConditions': _parseCommaSeparatedList(_conditionsController.text),
       'emergencyContactName': _emergencyNameController.text.trim(),
       'emergencyContactRelation': _emergencyRelationController.text.trim(),
       'emergencyContactPhone': _emergencyPhoneController.text.trim(),

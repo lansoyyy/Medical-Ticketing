@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../../models/user_model.dart';
+import '../../services/firestore_service.dart';
 import '../../utils/colors.dart';
 import '../../utils/text_styles.dart';
 
@@ -11,6 +13,7 @@ class SystemConfigScreen extends StatefulWidget {
 
 class _SystemConfigScreenState extends State<SystemConfigScreen>
     with SingleTickerProviderStateMixin {
+  final FirestoreService _firestoreService = FirestoreService();
   late TabController _tabController;
 
   @override
@@ -144,7 +147,111 @@ class _SystemConfigScreenState extends State<SystemConfigScreen>
         children: [
           Text('Doctor Availability', style: AppTextStyles.h5),
           const SizedBox(height: 20),
-          ..._doctors.map((d) => _buildDoctorScheduleCard(d)),
+          StreamBuilder<List<UserModel>>(
+            stream: _firestoreService.getUsersByRole('doctor'),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(
+                    child: CircularProgressIndicator(color: AppColors.primary));
+              }
+              final doctors = snapshot.data ?? [];
+              if (doctors.isEmpty) {
+                return Text('No doctors found',
+                    style: AppTextStyles.bodySmall
+                        .copyWith(color: AppColors.textSecondary));
+              }
+              return Column(
+                  children: doctors
+                      .map((d) => _buildDoctorScheduleCardFromModel(d))
+                      .toList());
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDoctorScheduleCardFromModel(UserModel doctor) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+          color: AppColors.white, borderRadius: BorderRadius.circular(12)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              CircleAvatar(
+                  backgroundColor: AppColors.cardPurple.withOpacity(0.1),
+                  child: Text(
+                      doctor.fullName.isNotEmpty ? doctor.fullName[0] : '?',
+                      style: TextStyle(color: AppColors.cardPurple))),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(doctor.fullName,
+                        style: AppTextStyles.bodyMedium
+                            .copyWith(fontWeight: FontWeight.w600)),
+                    Text(doctor.email,
+                        style: AppTextStyles.caption
+                            .copyWith(color: AppColors.cardBlue)),
+                  ],
+                ),
+              ),
+              ElevatedButton(
+                  onPressed: () => _showEditDoctorScheduleDialogNew(doctor),
+                  child: const Text('Edit Schedule')),
+            ],
+          ),
+          const Divider(height: 24),
+          Text('Contact: ${doctor.phone}',
+              style: AppTextStyles.caption
+                  .copyWith(color: AppColors.textSecondary)),
+        ],
+      ),
+    );
+  }
+
+  void _showEditDoctorScheduleDialogNew(UserModel doctor) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Edit Schedule: ${doctor.fullName}'),
+        content: SizedBox(
+          width: 500,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
+                .map((day) => Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Row(children: [
+                        SizedBox(width: 100, child: Text(day)),
+                        Expanded(
+                            child: TextField(
+                                style:
+                                    const TextStyle(color: AppColors.inputText),
+                                decoration: const InputDecoration(
+                                    hintText: '8:00 AM - 5:00 PM'))),
+                        Checkbox(value: true, onChanged: (_) {}),
+                      ]),
+                    ))
+                .toList(),
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel')),
+          ElevatedButton(
+              onPressed: () {
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Schedule updated')));
+              },
+              child: const Text('Save')),
         ],
       ),
     );
@@ -505,8 +612,7 @@ class _SystemConfigScreenState extends State<SystemConfigScreen>
             TextField(
                 style: const TextStyle(color: AppColors.inputText),
                 decoration: const InputDecoration(
-                    labelText: 'Description',
-                    hintText: 'Enter description')),
+                    labelText: 'Description', hintText: 'Enter description')),
             const SizedBox(height: 12),
             TextField(
                 style: const TextStyle(color: AppColors.inputText),

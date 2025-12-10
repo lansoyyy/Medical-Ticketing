@@ -1,4 +1,8 @@
 import 'package:flutter/material.dart';
+import '../../models/appointment_model.dart';
+import '../../models/user_model.dart';
+import '../../services/auth_service.dart';
+import '../../services/firestore_service.dart';
 import '../../utils/colors.dart';
 import '../../utils/text_styles.dart';
 
@@ -12,11 +16,33 @@ class AppointmentsScreen extends StatefulWidget {
 class _AppointmentsScreenState extends State<AppointmentsScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
+  final FirestoreService _firestoreService = FirestoreService();
+  final AuthService _authService = AuthService();
+  UserModel? _currentUser;
+  List<UserModel> _doctors = [];
+  bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
+    _loadData();
+  }
+
+  Future<void> _loadData() async {
+    final user = await _authService.getCurrentUserData();
+    if (mounted) {
+      setState(() {
+        _currentUser = user;
+        _isLoading = false;
+      });
+    }
+    // Load doctors
+    _firestoreService.getActiveDoctors().listen((doctors) {
+      if (mounted) {
+        setState(() => _doctors = doctors);
+      }
+    });
   }
 
   @override
@@ -64,47 +90,78 @@ class _AppointmentsScreenState extends State<AppointmentsScreen>
           ],
         ),
       ),
-      body: TabBarView(
-        controller: _tabController,
-        children: [
-          _buildAppointmentList(_upcomingAppointments),
-          _buildAppointmentList(_completedAppointments),
-          _buildAppointmentList(_cancelledAppointments),
-        ],
-      ),
+      body: _isLoading
+          ? const Center(
+              child: CircularProgressIndicator(color: AppColors.primary))
+          : _currentUser == null
+              ? const Center(child: Text('Please log in to view appointments'))
+              : TabBarView(
+                  controller: _tabController,
+                  children: [
+                    _buildAppointmentListStream([
+                      AppointmentStatus.scheduled,
+                      AppointmentStatus.confirmed
+                    ]),
+                    _buildAppointmentListStream([AppointmentStatus.completed]),
+                    _buildAppointmentListStream([
+                      AppointmentStatus.cancelled,
+                      AppointmentStatus.noShow
+                    ]),
+                  ],
+                ),
     );
   }
 
-  Widget _buildAppointmentList(List<Map<String, dynamic>> appointments) {
-    if (appointments.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.calendar_today_outlined,
-                size: 64, color: AppColors.grey400),
-            const SizedBox(height: 16),
-            Text('No appointments found',
-                style: AppTextStyles.bodyLarge
-                    .copyWith(color: AppColors.textSecondary)),
-          ],
-        ),
-      );
-    }
+  Widget _buildAppointmentListStream(List<AppointmentStatus> statuses) {
+    return StreamBuilder<List<AppointmentModel>>(
+      stream: _firestoreService.getPatientAppointments(_currentUser!.id),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(
+              child: CircularProgressIndicator(color: AppColors.primary));
+        }
 
-    return ListView.builder(
-      padding: const EdgeInsets.all(24),
-      itemCount: appointments.length,
-      itemBuilder: (context, index) {
-        return _buildAppointmentCard(appointments[index]);
+        final allAppointments = snapshot.data ?? [];
+        final appointments =
+            allAppointments.where((a) => statuses.contains(a.status)).toList();
+
+        if (appointments.isEmpty) {
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.calendar_today_outlined,
+                    size: 64, color: AppColors.grey400),
+                const SizedBox(height: 16),
+                Text('No appointments found',
+                    style: AppTextStyles.bodyLarge
+                        .copyWith(color: AppColors.textSecondary)),
+              ],
+            ),
+          );
+        }
+
+        return ListView.builder(
+          padding: const EdgeInsets.all(24),
+          itemCount: appointments.length,
+          itemBuilder: (context, index) {
+            return _buildAppointmentCard(appointments[index]);
+          },
+        );
       },
     );
   }
 
-  Widget _buildAppointmentCard(Map<String, dynamic> appointment) {
-    final statusColor = _getStatusColor(appointment['status']);
-    final isUpcoming = appointment['status'] == 'Confirmed' ||
-        appointment['status'] == 'Pending';
+  Widget _buildAppointmentCard(AppointmentModel appointment) {
+    final statusColor = _getStatusColorFromEnum(appointment.status);
+    final isUpcoming = appointment.status == AppointmentStatus.scheduled ||
+        appointment.status == AppointmentStatus.confirmed;
+
+    final initials = appointment.doctorName
+        .split(' ')
+        .map((n) => n.isNotEmpty ? n[0] : '')
+        .take(2)
+        .join();
 
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
@@ -141,10 +198,10 @@ class _AppointmentsScreenState extends State<AppointmentsScreen>
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(appointment['date'],
+                      Text(_formatDate(appointment.appointmentDate),
                           style: AppTextStyles.bodyMedium
                               .copyWith(fontWeight: FontWeight.w600)),
-                      Text(appointment['time'],
+                      Text(appointment.timeSlot,
                           style: AppTextStyles.caption
                               .copyWith(color: AppColors.textSecondary)),
                     ],
@@ -158,7 +215,7 @@ class _AppointmentsScreenState extends State<AppointmentsScreen>
                     borderRadius: BorderRadius.circular(16),
                   ),
                   child: Text(
-                    appointment['status'],
+                    appointment.statusDisplay,
                     style: AppTextStyles.caption.copyWith(
                         color: statusColor, fontWeight: FontWeight.w600),
                   ),
@@ -177,7 +234,7 @@ class _AppointmentsScreenState extends State<AppointmentsScreen>
                       radius: 24,
                       backgroundColor: AppColors.primary.withOpacity(0.1),
                       child: Text(
-                        appointment['doctorInitials'],
+                        initials.toUpperCase(),
                         style: AppTextStyles.bodyMedium.copyWith(
                             color: AppColors.primary,
                             fontWeight: FontWeight.bold),
@@ -188,10 +245,10 @@ class _AppointmentsScreenState extends State<AppointmentsScreen>
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(appointment['doctor'],
+                          Text(appointment.doctorName,
                               style: AppTextStyles.bodyMedium
                                   .copyWith(fontWeight: FontWeight.w600)),
-                          Text(appointment['specialty'],
+                          Text(appointment.department ?? 'General',
                               style: AppTextStyles.caption
                                   .copyWith(color: AppColors.textSecondary)),
                         ],
@@ -199,19 +256,8 @@ class _AppointmentsScreenState extends State<AppointmentsScreen>
                     ),
                   ],
                 ),
-                const SizedBox(height: 12),
-                const Divider(),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    _buildInfoChip(Icons.local_hospital_outlined,
-                        appointment['department']),
-                    const SizedBox(width: 12),
-                    _buildInfoChip(
-                        Icons.meeting_room_outlined, appointment['room']),
-                  ],
-                ),
-                if (appointment['notes'] != null) ...[
+                if (appointment.reason != null &&
+                    appointment.reason!.isNotEmpty) ...[
                   const SizedBox(height: 12),
                   Container(
                     width: double.infinity,
@@ -227,7 +273,7 @@ class _AppointmentsScreenState extends State<AppointmentsScreen>
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
-                            appointment['notes'],
+                            appointment.reason!,
                             style: AppTextStyles.caption
                                 .copyWith(color: AppColors.textSecondary),
                           ),
@@ -238,29 +284,15 @@ class _AppointmentsScreenState extends State<AppointmentsScreen>
                 ],
                 if (isUpcoming) ...[
                   const SizedBox(height: 16),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: () => _showRescheduleDialog(appointment),
-                          icon: const Icon(Icons.edit_calendar_outlined,
-                              size: 18),
-                          label: const Text('Reschedule'),
-                          style: OutlinedButton.styleFrom(
-                              foregroundColor: AppColors.primary),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: () => _showCancelDialog(appointment),
-                          icon: const Icon(Icons.cancel_outlined, size: 18),
-                          label: const Text('Cancel'),
-                          style: OutlinedButton.styleFrom(
-                              foregroundColor: AppColors.error),
-                        ),
-                      ),
-                    ],
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: () => _cancelAppointment(appointment.id),
+                      icon: const Icon(Icons.cancel_outlined, size: 18),
+                      label: const Text('Cancel Appointment'),
+                      style: OutlinedButton.styleFrom(
+                          foregroundColor: AppColors.error),
+                    ),
                   ),
                 ],
               ],
@@ -271,48 +303,76 @@ class _AppointmentsScreenState extends State<AppointmentsScreen>
     );
   }
 
-  Widget _buildInfoChip(IconData icon, String label) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        decoration: BoxDecoration(
-          color: AppColors.grey100,
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, size: 16, color: AppColors.textSecondary),
-            const SizedBox(width: 6),
-            Text(label,
-                style: AppTextStyles.caption
-                    .copyWith(color: AppColors.textSecondary)),
-          ],
-        ),
+  Future<void> _cancelAppointment(String appointmentId) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Cancel Appointment'),
+        content:
+            const Text('Are you sure you want to cancel this appointment?'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('No')),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.error),
+            child: const Text('Yes, Cancel'),
+          ),
+        ],
       ),
     );
-  }
 
-  Color _getStatusColor(String status) {
-    switch (status) {
-      case 'Confirmed':
-        return AppColors.success;
-      case 'Pending':
-        return AppColors.cardOrange;
-      case 'Completed':
-        return AppColors.cardBlue;
-      case 'Cancelled':
-        return AppColors.error;
-      default:
-        return AppColors.textSecondary;
+    if (confirmed == true) {
+      await _firestoreService.cancelAppointment(appointmentId);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text('Appointment cancelled'),
+              backgroundColor: AppColors.success),
+        );
+      }
     }
   }
 
+  Color _getStatusColorFromEnum(AppointmentStatus status) {
+    switch (status) {
+      case AppointmentStatus.confirmed:
+        return AppColors.success;
+      case AppointmentStatus.scheduled:
+        return AppColors.cardOrange;
+      case AppointmentStatus.completed:
+        return AppColors.cardBlue;
+      case AppointmentStatus.cancelled:
+      case AppointmentStatus.noShow:
+        return AppColors.error;
+    }
+  }
+
+  String _formatDate(DateTime date) {
+    final months = [
+      'January',
+      'February',
+      'March',
+      'April',
+      'May',
+      'June',
+      'July',
+      'August',
+      'September',
+      'October',
+      'November',
+      'December'
+    ];
+    return '${months[date.month - 1]} ${date.day}, ${date.year}';
+  }
+
   void _showBookAppointmentDialog() {
-    String? selectedDepartment;
-    String? selectedDoctor;
+    UserModel? selectedDoctor;
     DateTime? selectedDate;
     String? selectedTime;
+    final reasonController = TextEditingController();
+    bool isBooking = false;
 
     showDialog(
       context: context,
@@ -326,37 +386,11 @@ class _AppointmentsScreenState extends State<AppointmentsScreen>
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Department',
-                      style: AppTextStyles.bodySmall
-                          .copyWith(fontWeight: FontWeight.w600)),
-                  const SizedBox(height: 8),
-                  DropdownButtonFormField<String>(
-                    value: selectedDepartment,
-                    decoration: InputDecoration(
-                      border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8)),
-                      contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 12),
-                    ),
-                    hint: const Text('Select Department'),
-                    items: [
-                      'General Medicine',
-                      'Cardiology',
-                      'Dermatology',
-                      'Pediatrics',
-                      'Orthopedics'
-                    ]
-                        .map((d) => DropdownMenuItem(value: d, child: Text(d)))
-                        .toList(),
-                    onChanged: (value) =>
-                        setDialogState(() => selectedDepartment = value),
-                  ),
-                  const SizedBox(height: 16),
                   Text('Doctor',
                       style: AppTextStyles.bodySmall
                           .copyWith(fontWeight: FontWeight.w600)),
                   const SizedBox(height: 8),
-                  DropdownButtonFormField<String>(
+                  DropdownButtonFormField<UserModel>(
                     value: selectedDoctor,
                     decoration: InputDecoration(
                       border: OutlineInputBorder(
@@ -365,13 +399,12 @@ class _AppointmentsScreenState extends State<AppointmentsScreen>
                           horizontal: 12, vertical: 12),
                     ),
                     hint: const Text('Select Doctor'),
-                    items: [
-                      'Dr. Maria Santos',
-                      'Dr. Juan Cruz',
-                      'Dr. Ana Reyes',
-                      'Dr. Jose Garcia'
-                    ]
-                        .map((d) => DropdownMenuItem(value: d, child: Text(d)))
+                    items: _doctors
+                        .map((doctor) => DropdownMenuItem(
+                              value: doctor,
+                              child: Text(
+                                  'Dr. ${doctor.fullName}${doctor.specialization != null ? ' - ${doctor.specialization}' : ''}'),
+                            ))
                         .toList(),
                     onChanged: (value) =>
                         setDialogState(() => selectedDoctor = value),
@@ -449,6 +482,7 @@ class _AppointmentsScreenState extends State<AppointmentsScreen>
                           .copyWith(fontWeight: FontWeight.w600)),
                   const SizedBox(height: 8),
                   TextField(
+                    controller: reasonController,
                     maxLines: 3,
                     decoration: InputDecoration(
                       hintText: 'Describe your symptoms or reason...',
@@ -456,149 +490,75 @@ class _AppointmentsScreenState extends State<AppointmentsScreen>
                           borderRadius: BorderRadius.circular(8)),
                     ),
                   ),
+                  if (_doctors.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 16),
+                      child: Text(
+                        'No doctors available. Please try again later.',
+                        style: AppTextStyles.caption
+                            .copyWith(color: AppColors.error),
+                      ),
+                    ),
                 ],
               ),
             ),
           ),
           actions: [
             TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Cancel')),
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
             ElevatedButton(
-              onPressed: () {
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                      content: Text('Appointment booked successfully!'),
-                      backgroundColor: AppColors.success),
-                );
-              },
+              onPressed: (selectedDoctor == null ||
+                      selectedDate == null ||
+                      selectedTime == null ||
+                      isBooking)
+                  ? null
+                  : () async {
+                      setDialogState(() => isBooking = true);
+                      try {
+                        await _firestoreService.createAppointment(
+                          patientId: _currentUser!.id,
+                          patientName: _currentUser!.fullName,
+                          doctorId: selectedDoctor!.id,
+                          doctorName: 'Dr. ${selectedDoctor!.fullName}',
+                          department: selectedDoctor!.department,
+                          appointmentDate: selectedDate!,
+                          timeSlot: selectedTime!,
+                          reason: reasonController.text.trim(),
+                        );
+                        if (context.mounted) {
+                          Navigator.pop(context);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Appointment booked successfully!'),
+                              backgroundColor: AppColors.success,
+                            ),
+                          );
+                        }
+                      } catch (e) {
+                        setDialogState(() => isBooking = false);
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                                content: Text('Error: $e'),
+                                backgroundColor: AppColors.error),
+                          );
+                        }
+                      }
+                    },
               style:
                   ElevatedButton.styleFrom(backgroundColor: AppColors.primary),
-              child: const Text('Book'),
+              child: isBooking
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Text('Book'),
             ),
           ],
         ),
       ),
     );
   }
-
-  void _showRescheduleDialog(Map<String, dynamic> appointment) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Reschedule Appointment', style: AppTextStyles.h5),
-        content: const Text('Would you like to reschedule this appointment?'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel')),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              _showBookAppointmentDialog();
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary),
-            child: const Text('Reschedule'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showCancelDialog(Map<String, dynamic> appointment) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Cancel Appointment', style: AppTextStyles.h5),
-        content:
-            const Text('Are you sure you want to cancel this appointment?'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context), child: const Text('No')),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                    content: Text('Appointment cancelled'),
-                    backgroundColor: AppColors.error),
-              );
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: AppColors.error),
-            child: const Text('Yes, Cancel'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  final List<Map<String, dynamic>> _upcomingAppointments = [
-    {
-      'id': '1',
-      'date': 'December 10, 2024',
-      'time': '10:00 AM',
-      'doctor': 'Dr. Maria Santos',
-      'doctorInitials': 'MS',
-      'specialty': 'General Practitioner',
-      'department': 'General Medicine',
-      'room': 'Room 105',
-      'status': 'Confirmed',
-      'notes': 'Follow-up consultation for diabetes management',
-    },
-    {
-      'id': '2',
-      'date': 'December 15, 2024',
-      'time': '2:00 PM',
-      'doctor': 'Dr. Juan Cruz',
-      'doctorInitials': 'JC',
-      'specialty': 'Cardiologist',
-      'department': 'Cardiology',
-      'room': 'Room 203',
-      'status': 'Pending',
-      'notes': null,
-    },
-  ];
-
-  final List<Map<String, dynamic>> _completedAppointments = [
-    {
-      'id': '3',
-      'date': 'November 28, 2024',
-      'time': '9:00 AM',
-      'doctor': 'Dr. Maria Santos',
-      'doctorInitials': 'MS',
-      'specialty': 'General Practitioner',
-      'department': 'General Medicine',
-      'room': 'Room 105',
-      'status': 'Completed',
-      'notes': 'Regular checkup',
-    },
-    {
-      'id': '4',
-      'date': 'November 15, 2024',
-      'time': '3:00 PM',
-      'doctor': 'Dr. Ana Reyes',
-      'doctorInitials': 'AR',
-      'specialty': 'Dermatologist',
-      'department': 'Dermatology',
-      'room': 'Room 301',
-      'status': 'Completed',
-      'notes': 'Skin consultation',
-    },
-  ];
-
-  final List<Map<String, dynamic>> _cancelledAppointments = [
-    {
-      'id': '5',
-      'date': 'November 10, 2024',
-      'time': '11:00 AM',
-      'doctor': 'Dr. Jose Garcia',
-      'doctorInitials': 'JG',
-      'specialty': 'Orthopedic Surgeon',
-      'department': 'Orthopedics',
-      'room': 'Room 402',
-      'status': 'Cancelled',
-      'notes': 'Back pain consultation',
-    },
-  ];
 }

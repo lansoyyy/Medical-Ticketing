@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import '../../models/user_model.dart';
+import '../../models/consultation_model.dart';
+import '../../services/firestore_service.dart';
 import '../../utils/colors.dart';
 import '../../utils/text_styles.dart';
 
@@ -10,9 +13,10 @@ class PatientRecordsScreen extends StatefulWidget {
 }
 
 class _PatientRecordsScreenState extends State<PatientRecordsScreen> {
+  final FirestoreService _firestoreService = FirestoreService();
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
-  Map<String, dynamic>? _selectedPatient;
+  UserModel? _selectedPatient;
 
   @override
   Widget build(BuildContext context) {
@@ -25,7 +29,6 @@ class _PatientRecordsScreenState extends State<PatientRecordsScreen> {
       ),
       body: Row(
         children: [
-          // Search & List Panel
           Container(
             width: 350,
             color: AppColors.white,
@@ -56,13 +59,35 @@ class _PatientRecordsScreenState extends State<PatientRecordsScreen> {
                   ),
                 ),
                 Expanded(
-                  child: ListView.builder(
-                    itemCount: _filteredPatients.length,
-                    itemBuilder: (context, index) {
-                      final patient = _filteredPatients[index];
-                      final isSelected =
-                          _selectedPatient?['id'] == patient['id'];
-                      return _buildPatientListItem(patient, isSelected);
+                  child: StreamBuilder<List<UserModel>>(
+                    stream: _firestoreService.getUsersByRole('patient'),
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return const Center(
+                            child: CircularProgressIndicator(
+                                color: AppColors.primary));
+                      }
+                      final patients = (snapshot.data ?? [])
+                          .where((p) =>
+                              _searchQuery.isEmpty ||
+                              p.fullName
+                                  .toLowerCase()
+                                  .contains(_searchQuery.toLowerCase()))
+                          .toList();
+                      if (patients.isEmpty) {
+                        return Center(
+                            child: Text('No patients found',
+                                style: AppTextStyles.bodyMedium
+                                    .copyWith(color: AppColors.textSecondary)));
+                      }
+                      return ListView.builder(
+                        itemCount: patients.length,
+                        itemBuilder: (context, index) {
+                          final patient = patients[index];
+                          final isSelected = _selectedPatient?.id == patient.id;
+                          return _buildPatientListItem(patient, isSelected);
+                        },
+                      );
                     },
                   ),
                 ),
@@ -78,17 +103,7 @@ class _PatientRecordsScreenState extends State<PatientRecordsScreen> {
     );
   }
 
-  List<Map<String, dynamic>> get _filteredPatients {
-    if (_searchQuery.isEmpty) return _patients;
-    return _patients
-        .where((p) => p['name']
-            .toString()
-            .toLowerCase()
-            .contains(_searchQuery.toLowerCase()))
-        .toList();
-  }
-
-  Widget _buildPatientListItem(Map<String, dynamic> patient, bool isSelected) {
+  Widget _buildPatientListItem(UserModel patient, bool isSelected) {
     return InkWell(
       onTap: () => setState(() => _selectedPatient = patient),
       child: Container(
@@ -105,7 +120,8 @@ class _PatientRecordsScreenState extends State<PatientRecordsScreen> {
           children: [
             CircleAvatar(
                 backgroundColor: AppColors.primary.withOpacity(0.1),
-                child: Text(patient['name'][0],
+                child: Text(
+                    patient.fullName.isNotEmpty ? patient.fullName[0] : '?',
                     style: AppTextStyles.bodyMedium.copyWith(
                         color: AppColors.primary,
                         fontWeight: FontWeight.bold))),
@@ -114,10 +130,10 @@ class _PatientRecordsScreenState extends State<PatientRecordsScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(patient['name'],
+                  Text(patient.fullName,
                       style: AppTextStyles.bodyMedium
                           .copyWith(fontWeight: FontWeight.w600)),
-                  Text('${patient['age']} • ${patient['gender']}',
+                  Text('${patient.gender ?? 'N/A'} • ${patient.phone}',
                       style: AppTextStyles.caption
                           .copyWith(color: AppColors.textSecondary)),
                 ],
@@ -156,7 +172,6 @@ class _PatientRecordsScreenState extends State<PatientRecordsScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Patient Header
           Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
@@ -167,7 +182,10 @@ class _PatientRecordsScreenState extends State<PatientRecordsScreen> {
                 CircleAvatar(
                     radius: 36,
                     backgroundColor: AppColors.cardBlue.withOpacity(0.1),
-                    child: Text(_selectedPatient!['name'][0],
+                    child: Text(
+                        _selectedPatient!.fullName.isNotEmpty
+                            ? _selectedPatient!.fullName[0]
+                            : '?',
                         style: AppTextStyles.h3
                             .copyWith(color: AppColors.cardBlue))),
                 const SizedBox(width: 20),
@@ -175,18 +193,19 @@ class _PatientRecordsScreenState extends State<PatientRecordsScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(_selectedPatient!['name'], style: AppTextStyles.h5),
+                      Text(_selectedPatient!.fullName, style: AppTextStyles.h5),
                       const SizedBox(height: 4),
                       Text(
-                          '${_selectedPatient!['age']} • ${_selectedPatient!['gender']} • ${_selectedPatient!['contact']}',
+                          '${_selectedPatient!.gender ?? 'N/A'} • ${_selectedPatient!.phone}',
                           style: AppTextStyles.bodySmall
                               .copyWith(color: AppColors.textSecondary)),
                       const SizedBox(height: 8),
                       Row(children: [
-                        _buildInfoChip('Patient ID', _selectedPatient!['id']),
+                        _buildInfoChip(
+                            'Patient ID', _selectedPatient!.id.substring(0, 8)),
                         const SizedBox(width: 8),
                         _buildInfoChip(
-                            'Blood Type', _selectedPatient!['bloodType']),
+                            'Blood Type', _selectedPatient!.bloodType ?? 'N/A'),
                       ]),
                     ],
                   ),
@@ -202,28 +221,42 @@ class _PatientRecordsScreenState extends State<PatientRecordsScreen> {
             ),
           ),
           const SizedBox(height: 24),
-          // Medical Info
           Row(
             children: [
               Expanded(
                   child: _buildMedicalInfoCard('Allergies',
-                      _selectedPatient!['allergies'], AppColors.cardRed)),
+                      _selectedPatient!.allergies ?? [], AppColors.cardRed)),
               const SizedBox(width: 16),
               Expanded(
-                  child: _buildMedicalInfoCard('Conditions',
-                      _selectedPatient!['conditions'], AppColors.cardOrange)),
-              const SizedBox(width: 16),
-              Expanded(
-                  child: _buildMedicalInfoCard('Medications',
-                      _selectedPatient!['medications'], AppColors.cardPurple)),
+                  child: _buildMedicalInfoCard(
+                      'Conditions',
+                      _selectedPatient!.medicalConditions ?? [],
+                      AppColors.cardOrange)),
             ],
           ),
           const SizedBox(height: 24),
           Text('Consultation History', style: AppTextStyles.h6),
           const SizedBox(height: 16),
-          ..._selectedPatient!['consultations']
-              .map<Widget>((c) => _buildConsultationCard(c))
-              .toList(),
+          StreamBuilder<List<ConsultationModel>>(
+            stream:
+                _firestoreService.getPatientConsultations(_selectedPatient!.id),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(
+                    child: CircularProgressIndicator(color: AppColors.primary));
+              }
+              final consultations = snapshot.data ?? [];
+              if (consultations.isEmpty) {
+                return Text('No consultations found',
+                    style: AppTextStyles.bodySmall
+                        .copyWith(color: AppColors.textSecondary));
+              }
+              return Column(
+                  children: consultations
+                      .map((c) => _buildConsultationCard(c))
+                      .toList());
+            },
+          ),
         ],
       ),
     );
@@ -287,7 +320,7 @@ class _PatientRecordsScreenState extends State<PatientRecordsScreen> {
     );
   }
 
-  Widget _buildConsultationCard(Map<String, dynamic> c) {
+  Widget _buildConsultationCard(ConsultationModel c) {
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.all(16),
@@ -309,34 +342,22 @@ class _PatientRecordsScreenState extends State<PatientRecordsScreen> {
                 child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                  Text(c['diagnosis'],
+                  Text(c.diagnosis ?? 'Consultation',
                       style: AppTextStyles.bodyMedium
                           .copyWith(fontWeight: FontWeight.w600)),
-                  Text(c['doctor'],
+                  Text(c.doctorName,
                       style: AppTextStyles.caption
                           .copyWith(color: AppColors.cardBlue)),
                 ])),
-            Text(c['date'],
+            Text(
+                '${c.consultationDate.month}/${c.consultationDate.day}/${c.consultationDate.year}',
                 style: AppTextStyles.caption
                     .copyWith(color: AppColors.textSecondary)),
           ]),
           const Divider(height: 24),
-          Text('Complaint: ${c['complaint']}', style: AppTextStyles.bodySmall),
-          const SizedBox(height: 8),
-          Text('Notes: ${c['notes']}',
+          Text('Notes: ${c.notes ?? 'No notes'}',
               style: AppTextStyles.bodySmall
                   .copyWith(color: AppColors.textSecondary)),
-          const SizedBox(height: 12),
-          Row(children: [
-            TextButton.icon(
-                onPressed: () {},
-                icon: const Icon(Icons.visibility, size: 16),
-                label: const Text('View Details')),
-            TextButton.icon(
-                onPressed: () {},
-                icon: const Icon(Icons.download, size: 16),
-                label: const Text('Download')),
-          ]),
         ],
       ),
     );
@@ -383,74 +404,4 @@ class _PatientRecordsScreenState extends State<PatientRecordsScreen> {
       ),
     );
   }
-
-  final List<Map<String, dynamic>> _patients = [
-    {
-      'id': 'P-2024-001',
-      'name': 'Juan Dela Cruz',
-      'age': '45 yrs',
-      'gender': 'Male',
-      'contact': '+63 912 345 6789',
-      'bloodType': 'O+',
-      'allergies': ['Penicillin'],
-      'conditions': ['Hypertension', 'Type 2 Diabetes'],
-      'medications': ['Lisinopril 10mg', 'Metformin 500mg'],
-      'consultations': [
-        {
-          'date': 'Nov 28, 2024',
-          'diagnosis': 'Hypertension Follow-up',
-          'doctor': 'Dr. Maria Santos',
-          'complaint': 'BP monitoring',
-          'notes': 'BP controlled at 120/80. Continue current medication.'
-        },
-        {
-          'date': 'Oct 15, 2024',
-          'diagnosis': 'Diabetes Follow-up',
-          'doctor': 'Dr. Maria Santos',
-          'complaint': 'Routine checkup',
-          'notes': 'HbA1c improved to 6.8%. Good progress.'
-        },
-      ],
-    },
-    {
-      'id': 'P-2024-002',
-      'name': 'Maria Santos',
-      'age': '32 yrs',
-      'gender': 'Female',
-      'contact': '+63 917 123 4567',
-      'bloodType': 'A+',
-      'allergies': [],
-      'conditions': [],
-      'medications': [],
-      'consultations': [
-        {
-          'date': 'Dec 1, 2024',
-          'diagnosis': 'Upper Respiratory Infection',
-          'doctor': 'Dr. Juan Cruz',
-          'complaint': 'Cough and cold for 3 days',
-          'notes': 'Prescribed antibiotics and rest.'
-        },
-      ],
-    },
-    {
-      'id': 'P-2024-003',
-      'name': 'Pedro Garcia',
-      'age': '55 yrs',
-      'gender': 'Male',
-      'contact': '+63 918 765 4321',
-      'bloodType': 'B+',
-      'allergies': ['Sulfa drugs', 'Aspirin'],
-      'conditions': ['Asthma'],
-      'medications': ['Salbutamol inhaler'],
-      'consultations': [
-        {
-          'date': 'Nov 20, 2024',
-          'diagnosis': 'Asthma Exacerbation',
-          'doctor': 'Dr. Ana Reyes',
-          'complaint': 'Difficulty breathing',
-          'notes': 'Nebulization given. Added oral steroids.'
-        },
-      ],
-    },
-  ];
 }

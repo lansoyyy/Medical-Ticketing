@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../../models/audit_log_model.dart';
+import '../../services/firestore_service.dart';
 import '../../utils/colors.dart';
 import '../../utils/text_styles.dart';
 
@@ -10,6 +12,7 @@ class AuditLogScreen extends StatefulWidget {
 }
 
 class _AuditLogScreenState extends State<AuditLogScreen> {
+  final FirestoreService _firestoreService = FirestoreService();
   String _selectedCategory = 'All';
   String _selectedDateRange = 'Today';
   final TextEditingController _searchController = TextEditingController();
@@ -96,10 +99,28 @@ class _AuditLogScreenState extends State<AuditLogScreen> {
           ),
           // Log List
           Expanded(
-            child: ListView.builder(
-              padding: const EdgeInsets.symmetric(horizontal: 24),
-              itemCount: _auditLogs.length,
-              itemBuilder: (context, index) => _buildLogCard(_auditLogs[index]),
+            child: StreamBuilder<List<AuditLogModel>>(
+              stream: _firestoreService.getAuditLogs(limit: 50),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(
+                      child:
+                          CircularProgressIndicator(color: AppColors.primary));
+                }
+                final logs = snapshot.data ?? [];
+                if (logs.isEmpty) {
+                  return Center(
+                      child: Text('No audit logs found',
+                          style: AppTextStyles.bodyMedium
+                              .copyWith(color: AppColors.textSecondary)));
+                }
+                return ListView.builder(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  itemCount: logs.length,
+                  itemBuilder: (context, index) =>
+                      _buildLogCardFromModel(logs[index]),
+                );
+              },
             ),
           ),
         ],
@@ -140,6 +161,132 @@ class _AuditLogScreenState extends State<AuditLogScreen> {
         ],
       ),
     );
+  }
+
+  Widget _buildLogCardFromModel(AuditLogModel log) {
+    final color = _getActionColor(log.action);
+    final icon = _getActionIcon(log.action);
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+          color: AppColors.white, borderRadius: BorderRadius.circular(12)),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+                color: color.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(10)),
+            child: Icon(icon, color: color, size: 20),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 2),
+                      decoration: BoxDecoration(
+                          color: color.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(4)),
+                      child: Text(log.action.name.toUpperCase(),
+                          style: AppTextStyles.caption.copyWith(
+                              color: color, fontWeight: FontWeight.w600)),
+                    ),
+                    const Spacer(),
+                    Text(_formatTimestamp(log.createdAt),
+                        style: AppTextStyles.caption
+                            .copyWith(color: AppColors.textHint)),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Text(log.description,
+                    style: AppTextStyles.bodyMedium
+                        .copyWith(fontWeight: FontWeight.w600)),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    Icon(Icons.person_outline,
+                        size: 14, color: AppColors.textHint),
+                    const SizedBox(width: 4),
+                    Text(log.userName,
+                        style: AppTextStyles.caption
+                            .copyWith(color: AppColors.textSecondary)),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Color _getActionColor(AuditAction action) {
+    switch (action) {
+      case AuditAction.userLogin:
+        return AppColors.cardGreen;
+      case AuditAction.userLogout:
+        return AppColors.cardBlue;
+      case AuditAction.userCreated:
+        return AppColors.cardGreen;
+      case AuditAction.userUpdated:
+        return AppColors.cardOrange;
+      case AuditAction.userDeleted:
+        return AppColors.error;
+      case AuditAction.ticketCreated:
+        return AppColors.cardPurple;
+      case AuditAction.ticketUpdated:
+        return AppColors.cardOrange;
+      case AuditAction.ticketCompleted:
+        return AppColors.success;
+      case AuditAction.ticketCancelled:
+        return AppColors.error;
+      case AuditAction.consultationCreated:
+        return AppColors.cardCyan;
+      case AuditAction.consultationUpdated:
+        return AppColors.cardOrange;
+      default:
+        return AppColors.grey500;
+    }
+  }
+
+  IconData _getActionIcon(AuditAction action) {
+    switch (action) {
+      case AuditAction.userLogin:
+        return Icons.login;
+      case AuditAction.userLogout:
+        return Icons.logout;
+      case AuditAction.userCreated:
+        return Icons.person_add;
+      case AuditAction.userUpdated:
+        return Icons.edit;
+      case AuditAction.userDeleted:
+        return Icons.person_remove;
+      case AuditAction.ticketCreated:
+        return Icons.confirmation_number;
+      case AuditAction.ticketUpdated:
+        return Icons.edit;
+      case AuditAction.ticketCompleted:
+        return Icons.check_circle;
+      case AuditAction.ticketCancelled:
+        return Icons.cancel;
+      case AuditAction.consultationCreated:
+        return Icons.medical_services;
+      case AuditAction.consultationUpdated:
+        return Icons.edit_note;
+      default:
+        return Icons.info;
+    }
+  }
+
+  String _formatTimestamp(DateTime dt) {
+    return '${dt.month}/${dt.day}/${dt.year} ${dt.hour}:${dt.minute.toString().padLeft(2, '0')}';
   }
 
   Widget _buildLogCard(Map<String, dynamic> log) {

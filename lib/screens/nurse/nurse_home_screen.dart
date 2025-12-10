@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import '../../models/ticket_model.dart';
+import '../../models/user_model.dart';
 import '../../services/auth_service.dart';
+import '../../services/firestore_service.dart';
 import '../../utils/colors.dart';
 import '../../utils/text_styles.dart';
 import '../../widgets/dashboard_tile.dart';
@@ -19,8 +22,46 @@ class NurseHomeScreen extends StatefulWidget {
 
 class _NurseHomeScreenState extends State<NurseHomeScreen> {
   final AuthService _authService = AuthService();
+  final FirestoreService _firestoreService = FirestoreService();
+  UserModel? _currentUser;
   int _selectedNavIndex = 0;
   bool _isSidebarExpanded = true;
+  int _waitingCount = 0;
+  int _inProgressCount = 0;
+  int _completedCount = 0;
+  List<TicketModel> _queueTickets = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadData();
+  }
+
+  Future<void> _loadData() async {
+    final user = await _authService.getCurrentUserData();
+    if (user != null && mounted) {
+      setState(() => _currentUser = user);
+    }
+    // Listen to today's tickets
+    _firestoreService.getTodayTickets().listen((tickets) {
+      if (mounted) {
+        setState(() {
+          _queueTickets = tickets
+              .where((t) =>
+                  t.status == TicketStatus.waiting ||
+                  t.status == TicketStatus.called)
+              .take(5)
+              .toList();
+          _waitingCount =
+              tickets.where((t) => t.status == TicketStatus.waiting).length;
+          _inProgressCount =
+              tickets.where((t) => t.status == TicketStatus.inProgress).length;
+          _completedCount =
+              tickets.where((t) => t.status == TicketStatus.completed).length;
+        });
+      }
+    });
+  }
 
   final List<_NavItem> _navItems = [
     _NavItem(icon: Icons.dashboard_outlined, label: 'Dashboard'),
@@ -131,7 +172,7 @@ class _NurseHomeScreenState extends State<NurseHomeScreen> {
                     child: Icon(Icons.person,
                         size: 18, color: AppColors.cardTeal)),
                 const SizedBox(width: 8),
-                Text('Nurse Anna',
+                Text(_currentUser?.fullName ?? 'Nurse',
                     style: AppTextStyles.bodySmall
                         .copyWith(color: AppColors.white)),
               ],
@@ -230,11 +271,13 @@ class _NurseHomeScreenState extends State<NurseHomeScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Good Morning, Nurse Anna!',
+                      Text(
+                          'Good Morning, ${_currentUser?.firstName ?? 'Nurse'}!',
                           style: AppTextStyles.h4
                               .copyWith(color: AppColors.white)),
                       const SizedBox(height: 4),
-                      Text('You have 8 patients waiting in queue today.',
+                      Text(
+                          'You have $_waitingCount patients waiting in queue today.',
                           style: AppTextStyles.bodyMedium.copyWith(
                               color: AppColors.white.withOpacity(0.9))),
                     ],
@@ -268,23 +311,26 @@ class _NurseHomeScreenState extends State<NurseHomeScreen> {
   }
 
   Widget _buildStatsRow() {
+    final urgentCount = _queueTickets
+        .where((t) => t.priority == TicketPriority.emergency)
+        .length;
     return Row(
       children: [
         Expanded(
-            child: _buildStatCard(
-                'Waiting', '8', AppColors.cardOrange, Icons.hourglass_empty)),
+            child: _buildStatCard('Waiting', '$_waitingCount',
+                AppColors.cardOrange, Icons.hourglass_empty)),
         const SizedBox(width: 16),
         Expanded(
-            child: _buildStatCard('In Consultation', '3', AppColors.cardBlue,
-                Icons.medical_services)),
+            child: _buildStatCard('In Progress', '$_inProgressCount',
+                AppColors.cardBlue, Icons.medical_services)),
         const SizedBox(width: 16),
         Expanded(
-            child: _buildStatCard(
-                'Completed', '12', AppColors.success, Icons.check_circle)),
+            child: _buildStatCard('Completed', '$_completedCount',
+                AppColors.success, Icons.check_circle)),
         const SizedBox(width: 16),
         Expanded(
-            child: _buildStatCard(
-                'Urgent', '2', AppColors.error, Icons.priority_high)),
+            child: _buildStatCard('Urgent', '$urgentCount', AppColors.error,
+                Icons.priority_high)),
       ],
     );
   }
@@ -386,14 +432,24 @@ class _NurseHomeScreenState extends State<NurseHomeScreen> {
             ],
           ),
           const SizedBox(height: 16),
-          ..._queuePatients.map((p) => _buildPatientRow(p)),
+          if (_queueTickets.isEmpty)
+            Center(
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Text('No patients in queue',
+                    style: AppTextStyles.bodyMedium
+                        .copyWith(color: AppColors.textSecondary)),
+              ),
+            )
+          else
+            ..._queueTickets.map((ticket) => _buildTicketRow(ticket)),
         ],
       ),
     );
   }
 
-  Widget _buildPatientRow(Map<String, dynamic> patient) {
-    final statusColor = _getStatusColor(patient['status']);
+  Widget _buildTicketRow(TicketModel ticket) {
+    final statusColor = _getTicketStatusColor(ticket.status);
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(12),
@@ -408,7 +464,7 @@ class _NurseHomeScreenState extends State<NurseHomeScreen> {
                 color: AppColors.primary.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(8)),
             child: Center(
-                child: Text(patient['queue'],
+                child: Text('${ticket.queueNumber}',
                     style: AppTextStyles.bodyMedium.copyWith(
                         fontWeight: FontWeight.bold,
                         color: AppColors.primary))),
@@ -418,10 +474,10 @@ class _NurseHomeScreenState extends State<NurseHomeScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(patient['name'],
+                Text(ticket.patientName,
                     style: AppTextStyles.bodyMedium
                         .copyWith(fontWeight: FontWeight.w600)),
-                Text(patient['type'],
+                Text(ticket.chiefComplaint ?? 'General',
                     style: AppTextStyles.caption
                         .copyWith(color: AppColors.textSecondary)),
               ],
@@ -432,12 +488,12 @@ class _NurseHomeScreenState extends State<NurseHomeScreen> {
             decoration: BoxDecoration(
                 color: statusColor.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(12)),
-            child: Text(patient['status'],
+            child: Text(ticket.statusDisplay,
                 style: AppTextStyles.caption
                     .copyWith(color: statusColor, fontWeight: FontWeight.w600)),
           ),
           const SizedBox(width: 8),
-          if (patient['urgent'] == true)
+          if (ticket.priority == TicketPriority.emergency)
             Container(
               padding: const EdgeInsets.all(4),
               decoration: BoxDecoration(
@@ -451,16 +507,18 @@ class _NurseHomeScreenState extends State<NurseHomeScreen> {
     );
   }
 
-  Color _getStatusColor(String status) {
+  Color _getTicketStatusColor(TicketStatus status) {
     switch (status) {
-      case 'Waiting':
+      case TicketStatus.waiting:
         return AppColors.cardOrange;
-      case 'In Consultation':
+      case TicketStatus.called:
+      case TicketStatus.inProgress:
         return AppColors.cardBlue;
-      case 'Completed':
+      case TicketStatus.completed:
         return AppColors.success;
-      default:
-        return AppColors.textSecondary;
+      case TicketStatus.cancelled:
+      case TicketStatus.noShow:
+        return AppColors.error;
     }
   }
 
@@ -600,37 +658,6 @@ class _NurseHomeScreenState extends State<NurseHomeScreen> {
   void _navigateTo(Widget screen) {
     Navigator.push(context, MaterialPageRoute(builder: (_) => screen));
   }
-
-  final List<Map<String, dynamic>> _queuePatients = [
-    {
-      'queue': '01',
-      'name': 'Juan Dela Cruz',
-      'type': 'Walk-in',
-      'status': 'In Consultation',
-      'urgent': false
-    },
-    {
-      'queue': '02',
-      'name': 'Maria Santos',
-      'type': 'Appointment',
-      'status': 'Waiting',
-      'urgent': true
-    },
-    {
-      'queue': '03',
-      'name': 'Pedro Garcia',
-      'type': 'Walk-in',
-      'status': 'Waiting',
-      'urgent': false
-    },
-    {
-      'queue': '04',
-      'name': 'Ana Reyes',
-      'type': 'Walk-in',
-      'status': 'Waiting',
-      'urgent': false
-    },
-  ];
 }
 
 class _NavItem {

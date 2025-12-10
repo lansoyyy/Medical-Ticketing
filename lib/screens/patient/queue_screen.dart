@@ -1,4 +1,8 @@
 import 'package:flutter/material.dart';
+import '../../models/ticket_model.dart';
+import '../../models/user_model.dart';
+import '../../services/auth_service.dart';
+import '../../services/firestore_service.dart';
 import '../../utils/colors.dart';
 import '../../utils/text_styles.dart';
 
@@ -12,16 +16,41 @@ class QueueScreen extends StatefulWidget {
 class _QueueScreenState extends State<QueueScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
+  final FirestoreService _firestoreService = FirestoreService();
+  final AuthService _authService = AuthService();
+  UserModel? _currentUser;
+  TicketModel? _activeTicket;
+  bool _isLoading = true;
+  bool _isCreatingTicket = false;
+
+  final _chiefComplaintController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
+    _loadData();
+  }
+
+  Future<void> _loadData() async {
+    final user = await _authService.getCurrentUserData();
+    if (user != null && mounted) {
+      final activeTicket =
+          await _firestoreService.getPatientActiveTicket(user.id);
+      setState(() {
+        _currentUser = user;
+        _activeTicket = activeTicket;
+        _isLoading = false;
+      });
+    } else {
+      setState(() => _isLoading = false);
+    }
   }
 
   @override
   void dispose() {
     _tabController.dispose();
+    _chiefComplaintController.dispose();
     super.dispose();
   }
 
@@ -49,32 +78,160 @@ class _QueueScreenState extends State<QueueScreen>
           ],
         ),
       ),
-      body: TabBarView(
-        controller: _tabController,
+      body: _isLoading
+          ? const Center(
+              child: CircularProgressIndicator(color: AppColors.primary))
+          : TabBarView(
+              controller: _tabController,
+              children: [
+                _buildCurrentQueueTab(),
+                _buildTicketHistoryTab(),
+              ],
+            ),
+      floatingActionButton: _activeTicket == null
+          ? FloatingActionButton.extended(
+              onPressed: _showCreateTicketDialog,
+              backgroundColor: AppColors.primary,
+              icon: const Icon(Icons.add),
+              label: const Text('Get Ticket'),
+            )
+          : null,
+    );
+  }
+
+  Widget _buildCurrentQueueTab() {
+    if (_activeTicket == null) {
+      return _buildNoActiveTicket();
+    }
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(24),
+      child: Column(
         children: [
-          _buildCurrentQueueTab(),
-          _buildTicketHistoryTab(),
+          _buildActiveQueueCard(),
+          const SizedBox(height: 24),
+          _buildQueueStatusCard(),
+          const SizedBox(height: 24),
+          _buildQueueProgressCard(),
         ],
       ),
     );
   }
 
-  Widget _buildCurrentQueueTab() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        children: [
-          // Active Queue Card
-          _buildActiveQueueCard(),
-          const SizedBox(height: 24),
-          // Queue Status Card
-          _buildQueueStatusCard(),
-          const SizedBox(height: 24),
-          // Queue Progress
-          _buildQueueProgressCard(),
+  Widget _buildNoActiveTicket() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.confirmation_number_outlined,
+                size: 80, color: AppColors.grey300),
+            const SizedBox(height: 24),
+            Text('No Active Ticket',
+                style: AppTextStyles.h5.copyWith(color: AppColors.textPrimary)),
+            const SizedBox(height: 8),
+            Text(
+              'You don\'t have an active queue ticket.\nTap the button below to get one.',
+              textAlign: TextAlign.center,
+              style: AppTextStyles.bodyMedium
+                  .copyWith(color: AppColors.textSecondary),
+            ),
+            const SizedBox(height: 32),
+            ElevatedButton.icon(
+              onPressed: _showCreateTicketDialog,
+              icon: const Icon(Icons.add),
+              label: const Text('Get Queue Ticket'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showCreateTicketDialog() {
+    _chiefComplaintController.clear();
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Get Queue Ticket'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Please describe your reason for visit:'),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _chiefComplaintController,
+              maxLines: 3,
+              style: TextStyle(color: AppColors.white),
+              decoration: InputDecoration(
+                hintText: 'e.g., Fever, Headache, Check-up...',
+                border:
+                    OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: _isCreatingTicket ? null : _createTicket,
+            child: _isCreatingTicket
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Text('Get Ticket'),
+          ),
         ],
       ),
     );
+  }
+
+  Future<void> _createTicket() async {
+    if (_currentUser == null) return;
+
+    setState(() => _isCreatingTicket = true);
+
+    try {
+      final ticket = await _firestoreService.createTicket(
+        patientId: _currentUser!.id,
+        patientName: _currentUser!.fullName,
+        chiefComplaint: _chiefComplaintController.text.trim(),
+      );
+
+      if (mounted) {
+        Navigator.pop(context);
+        setState(() {
+          _activeTicket = ticket;
+          _isCreatingTicket = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content:
+                Text('Ticket #${ticket.queueNumber} created successfully!'),
+            backgroundColor: AppColors.success,
+          ),
+        );
+      }
+    } catch (e) {
+      setState(() => _isCreatingTicket = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+              content: Text('Error: $e'), backgroundColor: AppColors.error),
+        );
+      }
+    }
   }
 
   Widget _buildActiveQueueCard() {
@@ -109,7 +266,7 @@ class _QueueScreenState extends State<QueueScreen>
               borderRadius: BorderRadius.circular(16),
             ),
             child: Text(
-              'A-042',
+              '${_activeTicket!.queueNumber}',
               style: AppTextStyles.h1.copyWith(
                 fontSize: 56,
                 color: AppColors.primary,
@@ -118,33 +275,19 @@ class _QueueScreenState extends State<QueueScreen>
             ),
           ),
           const SizedBox(height: 24),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              _buildQueueInfoItem(Icons.people_outline, 'Position', '5th'),
-              Container(
-                height: 40,
-                width: 1,
-                color: AppColors.white.withOpacity(0.3),
-                margin: const EdgeInsets.symmetric(horizontal: 24),
-              ),
-              _buildQueueInfoItem(Icons.access_time, 'Est. Wait', '~25 min'),
-            ],
-          ),
-          const SizedBox(height: 24),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             decoration: BoxDecoration(
-              color: AppColors.accent,
+              color: _getStatusBgColor(_activeTicket!.status),
               borderRadius: BorderRadius.circular(20),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.timer_outlined,
+                Icon(_getStatusIcon(_activeTicket!.status),
                     color: AppColors.white, size: 18),
                 const SizedBox(width: 8),
-                Text('Now Serving: A-037',
+                Text(_activeTicket!.statusDisplay,
                     style: AppTextStyles.bodyMedium.copyWith(
                         color: AppColors.white, fontWeight: FontWeight.w600)),
               ],
@@ -155,23 +298,40 @@ class _QueueScreenState extends State<QueueScreen>
     );
   }
 
-  Widget _buildQueueInfoItem(IconData icon, String label, String value) {
-    return Column(
-      children: [
-        Icon(icon, color: AppColors.white.withOpacity(0.8), size: 24),
-        const SizedBox(height: 8),
-        Text(label,
-            style: AppTextStyles.caption
-                .copyWith(color: AppColors.white.withOpacity(0.8))),
-        const SizedBox(height: 4),
-        Text(value,
-            style: AppTextStyles.h5
-                .copyWith(color: AppColors.white, fontWeight: FontWeight.bold)),
-      ],
-    );
+  Color _getStatusBgColor(TicketStatus status) {
+    switch (status) {
+      case TicketStatus.waiting:
+        return AppColors.cardBlue;
+      case TicketStatus.called:
+        return AppColors.accent;
+      case TicketStatus.inProgress:
+        return AppColors.cardOrange;
+      case TicketStatus.completed:
+        return AppColors.success;
+      case TicketStatus.cancelled:
+      case TicketStatus.noShow:
+        return AppColors.error;
+    }
+  }
+
+  IconData _getStatusIcon(TicketStatus status) {
+    switch (status) {
+      case TicketStatus.waiting:
+        return Icons.hourglass_top;
+      case TicketStatus.called:
+        return Icons.notifications_active;
+      case TicketStatus.inProgress:
+        return Icons.medical_services;
+      case TicketStatus.completed:
+        return Icons.check_circle;
+      case TicketStatus.cancelled:
+      case TicketStatus.noShow:
+        return Icons.cancel;
+    }
   }
 
   Widget _buildQueueStatusCard() {
+    final ticket = _activeTicket!;
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -186,53 +346,66 @@ class _QueueScreenState extends State<QueueScreen>
         children: [
           Text('Ticket Details', style: AppTextStyles.h6),
           const SizedBox(height: 16),
-          _buildDetailRow('Ticket ID', 'TKT-2024-00456'),
-          _buildDetailRow('Department', 'General Medicine'),
-          _buildDetailRow('Doctor', 'Dr. Maria Santos'),
-          _buildDetailRow('Date', 'December 4, 2024'),
-          _buildDetailRow('Time Issued', '9:30 AM'),
+          _buildDetailRow('Ticket ID', ticket.id.substring(0, 8).toUpperCase()),
+          if (ticket.chiefComplaint != null &&
+              ticket.chiefComplaint!.isNotEmpty)
+            _buildDetailRow('Reason', ticket.chiefComplaint!),
+          if (ticket.assignedDoctorName != null)
+            _buildDetailRow('Doctor', ticket.assignedDoctorName!),
+          _buildDetailRow('Date', _formatDate(ticket.createdAt)),
+          _buildDetailRow('Time Issued', _formatTime(ticket.createdAt)),
           const Divider(height: 24),
-          Row(
-            children: [
-              Expanded(
-                child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: AppColors.cardBlue.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(Icons.hourglass_top,
-                          color: AppColors.cardBlue, size: 18),
-                      const SizedBox(width: 8),
-                      Text('Waiting',
-                          style: AppTextStyles.bodySmall.copyWith(
-                              color: AppColors.cardBlue,
-                              fontWeight: FontWeight.w600)),
-                    ],
-                  ),
+          if (ticket.status == TicketStatus.waiting ||
+              ticket.status == TicketStatus.called)
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () => _cancelTicket(ticket.id),
+                icon: const Icon(Icons.cancel_outlined, size: 18),
+                label: const Text('Cancel Ticket'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppColors.error,
+                  side: const BorderSide(color: AppColors.error),
                 ),
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: () {},
-                  icon: const Icon(Icons.cancel_outlined, size: 18),
-                  label: const Text('Cancel'),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: AppColors.error,
-                    side: const BorderSide(color: AppColors.error),
-                  ),
-                ),
-              ),
-            ],
+            ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _cancelTicket(String ticketId) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Cancel Ticket'),
+        content: const Text('Are you sure you want to cancel this ticket?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('No'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.error),
+            child: const Text('Yes, Cancel'),
           ),
         ],
       ),
     );
+
+    if (confirmed == true) {
+      await _firestoreService.cancelTicket(ticketId);
+      setState(() => _activeTicket = null);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Ticket cancelled'),
+            backgroundColor: AppColors.success,
+          ),
+        );
+      }
+    }
   }
 
   Widget _buildDetailRow(String label, String value) {
@@ -244,15 +417,31 @@ class _QueueScreenState extends State<QueueScreen>
           Text(label,
               style: AppTextStyles.bodyMedium
                   .copyWith(color: AppColors.textSecondary)),
-          Text(value,
-              style: AppTextStyles.bodyMedium
-                  .copyWith(fontWeight: FontWeight.w600)),
+          Flexible(
+            child: Text(value,
+                style: AppTextStyles.bodyMedium
+                    .copyWith(fontWeight: FontWeight.w600),
+                textAlign: TextAlign.right),
+          ),
         ],
       ),
     );
   }
 
   Widget _buildQueueProgressCard() {
+    final ticket = _activeTicket!;
+    final isIssued = true;
+    final isWaiting = ticket.status == TicketStatus.waiting ||
+        ticket.status == TicketStatus.called ||
+        ticket.status == TicketStatus.inProgress ||
+        ticket.status == TicketStatus.completed;
+    final isCalled = ticket.status == TicketStatus.called ||
+        ticket.status == TicketStatus.inProgress ||
+        ticket.status == TicketStatus.completed;
+    final isInProgress = ticket.status == TicketStatus.inProgress ||
+        ticket.status == TicketStatus.completed;
+    final isCompleted = ticket.status == TicketStatus.completed;
+
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -267,11 +456,22 @@ class _QueueScreenState extends State<QueueScreen>
         children: [
           Text('Queue Progress', style: AppTextStyles.h6),
           const SizedBox(height: 20),
-          _buildProgressStep('Ticket Issued', '9:30 AM', true, true),
-          _buildProgressStep('Waiting in Queue', '9:30 AM', true, false),
-          _buildProgressStep('Called by Nurse', '', false, false),
-          _buildProgressStep('Consultation', '', false, false),
-          _buildProgressStep('Completed', '', false, false),
+          _buildProgressStep('Ticket Issued', _formatTime(ticket.createdAt),
+              isIssued, isWaiting),
+          _buildProgressStep('Waiting in Queue', '', isWaiting, isCalled),
+          _buildProgressStep(
+              'Called',
+              ticket.calledAt != null ? _formatTime(ticket.calledAt!) : '',
+              isCalled,
+              isInProgress),
+          _buildProgressStep('In Consultation', '', isInProgress, isCompleted),
+          _buildProgressStep(
+              'Completed',
+              ticket.completedAt != null
+                  ? _formatTime(ticket.completedAt!)
+                  : '',
+              isCompleted,
+              false),
         ],
       ),
     );
@@ -333,18 +533,49 @@ class _QueueScreenState extends State<QueueScreen>
   }
 
   Widget _buildTicketHistoryTab() {
-    return ListView.builder(
-      padding: const EdgeInsets.all(24),
-      itemCount: _ticketHistory.length,
-      itemBuilder: (context, index) {
-        final ticket = _ticketHistory[index];
-        return _buildTicketHistoryItem(ticket);
+    if (_currentUser == null) {
+      return const Center(child: Text('Please log in to view history'));
+    }
+
+    return StreamBuilder<List<TicketModel>>(
+      stream: _firestoreService.getPatientTickets(_currentUser!.id),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(
+              child: CircularProgressIndicator(color: AppColors.primary));
+        }
+
+        final tickets = snapshot.data ?? [];
+
+        if (tickets.isEmpty) {
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.history, size: 64, color: AppColors.grey300),
+                const SizedBox(height: 16),
+                Text('No ticket history',
+                    style: AppTextStyles.bodyLarge
+                        .copyWith(color: AppColors.textSecondary)),
+              ],
+            ),
+          );
+        }
+
+        return ListView.builder(
+          padding: const EdgeInsets.all(24),
+          itemCount: tickets.length,
+          itemBuilder: (context, index) {
+            final ticket = tickets[index];
+            return _buildTicketHistoryItem(ticket);
+          },
+        );
       },
     );
   }
 
-  Widget _buildTicketHistoryItem(Map<String, dynamic> ticket) {
-    final statusColor = _getStatusColor(ticket['status']);
+  Widget _buildTicketHistoryItem(TicketModel ticket) {
+    final statusColor = _getStatusColorFromEnum(ticket.status);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -365,7 +596,7 @@ class _QueueScreenState extends State<QueueScreen>
               borderRadius: BorderRadius.circular(12),
             ),
             child: Text(
-              ticket['queueNumber'],
+              '${ticket.queueNumber}',
               style: AppTextStyles.h6.copyWith(color: statusColor),
             ),
           ),
@@ -374,14 +605,15 @@ class _QueueScreenState extends State<QueueScreen>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(ticket['department'],
+                Text(ticket.chiefComplaint ?? 'General Consultation',
                     style: AppTextStyles.bodyMedium
                         .copyWith(fontWeight: FontWeight.w600)),
                 const SizedBox(height: 4),
-                Text(ticket['doctor'],
-                    style: AppTextStyles.caption
-                        .copyWith(color: AppColors.textSecondary)),
-                Text(ticket['date'],
+                if (ticket.assignedDoctorName != null)
+                  Text(ticket.assignedDoctorName!,
+                      style: AppTextStyles.caption
+                          .copyWith(color: AppColors.textSecondary)),
+                Text(_formatDate(ticket.createdAt),
                     style: AppTextStyles.caption
                         .copyWith(color: AppColors.textSecondary)),
               ],
@@ -394,7 +626,7 @@ class _QueueScreenState extends State<QueueScreen>
               borderRadius: BorderRadius.circular(16),
             ),
             child: Text(
-              ticket['status'],
+              ticket.statusDisplay,
               style: AppTextStyles.caption
                   .copyWith(color: statusColor, fontWeight: FontWeight.w600),
             ),
@@ -404,61 +636,44 @@ class _QueueScreenState extends State<QueueScreen>
     );
   }
 
-  Color _getStatusColor(String status) {
+  Color _getStatusColorFromEnum(TicketStatus status) {
     switch (status) {
-      case 'Completed':
+      case TicketStatus.completed:
         return AppColors.success;
-      case 'Cancelled':
+      case TicketStatus.cancelled:
         return AppColors.error;
-      case 'No Show':
+      case TicketStatus.noShow:
         return AppColors.cardOrange;
-      default:
+      case TicketStatus.waiting:
+      case TicketStatus.called:
         return AppColors.cardBlue;
+      case TicketStatus.inProgress:
+        return AppColors.primary;
     }
   }
 
-  final List<Map<String, dynamic>> _ticketHistory = [
-    {
-      'queueNumber': 'A-038',
-      'department': 'General Medicine',
-      'doctor': 'Dr. Maria Santos',
-      'date': 'Nov 28, 2024',
-      'status': 'Completed'
-    },
-    {
-      'queueNumber': 'B-012',
-      'department': 'Cardiology',
-      'doctor': 'Dr. Juan Cruz',
-      'date': 'Nov 20, 2024',
-      'status': 'Completed'
-    },
-    {
-      'queueNumber': 'A-055',
-      'department': 'General Medicine',
-      'doctor': 'Dr. Maria Santos',
-      'date': 'Nov 15, 2024',
-      'status': 'Completed'
-    },
-    {
-      'queueNumber': 'C-003',
-      'department': 'Dermatology',
-      'doctor': 'Dr. Ana Reyes',
-      'date': 'Nov 10, 2024',
-      'status': 'Cancelled'
-    },
-    {
-      'queueNumber': 'A-021',
-      'department': 'General Medicine',
-      'doctor': 'Dr. Jose Garcia',
-      'date': 'Oct 25, 2024',
-      'status': 'Completed'
-    },
-    {
-      'queueNumber': 'D-008',
-      'department': 'Pediatrics',
-      'doctor': 'Dr. Lisa Tan',
-      'date': 'Oct 18, 2024',
-      'status': 'No Show'
-    },
-  ];
+  String _formatDate(DateTime date) {
+    final months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec'
+    ];
+    return '${months[date.month - 1]} ${date.day}, ${date.year}';
+  }
+
+  String _formatTime(DateTime date) {
+    final hour =
+        date.hour > 12 ? date.hour - 12 : (date.hour == 0 ? 12 : date.hour);
+    final period = date.hour >= 12 ? 'PM' : 'AM';
+    return '$hour:${date.minute.toString().padLeft(2, '0')} $period';
+  }
 }

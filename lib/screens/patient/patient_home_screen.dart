@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import '../../models/user_model.dart';
 import '../../services/auth_service.dart';
+import '../../services/firestore_service.dart';
 import '../../utils/colors.dart';
 import '../../utils/text_styles.dart';
 import '../../widgets/dashboard_tile.dart';
@@ -22,8 +24,28 @@ class PatientHomeScreen extends StatefulWidget {
 
 class _PatientHomeScreenState extends State<PatientHomeScreen> {
   final AuthService _authService = AuthService();
+  final FirestoreService _firestoreService = FirestoreService();
+  UserModel? _currentUser;
   int _selectedNavIndex = 0;
   bool _isSidebarExpanded = true;
+  int _unreadNotifications = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserData();
+  }
+
+  Future<void> _loadUserData() async {
+    final user = await _authService.getCurrentUserData();
+    if (user != null && mounted) {
+      setState(() => _currentUser = user);
+      // Listen to unread notifications
+      _firestoreService.getUnreadNotificationsCount(user.id).listen((count) {
+        if (mounted) setState(() => _unreadNotifications = count);
+      });
+    }
+  }
 
   final List<_NavItem> _navItems = [
     _NavItem(icon: Icons.dashboard_outlined, label: 'Dashboard'),
@@ -137,10 +159,33 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
           // User Profile
           Row(
             children: [
-              IconButton(
-                icon: const Icon(Icons.notifications_outlined,
-                    color: AppColors.white),
-                onPressed: () {},
+              Stack(
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.notifications_outlined,
+                        color: AppColors.white),
+                    onPressed: () => _navigateTo(const NotificationsScreen()),
+                  ),
+                  if (_unreadNotifications > 0)
+                    Positioned(
+                      right: 8,
+                      top: 8,
+                      child: Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: const BoxDecoration(
+                          color: AppColors.accent,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Text(
+                          '$_unreadNotifications',
+                          style: AppTextStyles.caption.copyWith(
+                            color: AppColors.white,
+                            fontSize: 10,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
               ),
               const SizedBox(width: 8),
               Container(
@@ -156,7 +201,7 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
                       radius: 14,
                       backgroundColor: AppColors.accent,
                       child: Text(
-                        'JD',
+                        _currentUser?.initials ?? 'U',
                         style: AppTextStyles.caption.copyWith(
                           color: AppColors.white,
                           fontWeight: FontWeight.bold,
@@ -165,7 +210,7 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
                     ),
                     const SizedBox(width: 8),
                     Text(
-                      'John Doe',
+                      _currentUser?.fullName ?? 'User',
                       style: AppTextStyles.bodySmall.copyWith(
                         color: AppColors.white,
                       ),
@@ -299,7 +344,7 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Welcome back, John Doe',
+                        'Welcome back, ${_currentUser?.firstName ?? 'User'}',
                         style: AppTextStyles.h4.copyWith(
                           color: AppColors.white,
                         ),
@@ -340,8 +385,10 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
   Widget _buildDashboardGrid() {
     final tiles = [
       _TileData(
-          Icons.confirmation_number_outlined, 'View Queue', AppColors.cardRed,
-          badgeCount: 1),
+        Icons.confirmation_number_outlined,
+        'View Queue',
+        AppColors.cardRed,
+      ),
       _TileData(
           Icons.receipt_long_outlined, 'Ticket History', AppColors.cardYellow),
       _TileData(Icons.calendar_today_outlined, 'Book Appointment',
@@ -351,8 +398,10 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
       _TileData(Icons.folder_outlined, 'Medical Records', AppColors.cardGreen),
       _TileData(Icons.person_outline, 'My Profile', AppColors.cardIndigo),
       _TileData(
-          Icons.notifications_outlined, 'Notifications', AppColors.cardOrange,
-          badgeCount: 3),
+        Icons.notifications_outlined,
+        'Notifications',
+        AppColors.cardOrange,
+      ),
     ];
 
     return LayoutBuilder(

@@ -1,4 +1,8 @@
 import 'package:flutter/material.dart';
+import '../../models/notification_model.dart';
+import '../../models/user_model.dart';
+import '../../services/auth_service.dart';
+import '../../services/firestore_service.dart';
 import '../../utils/colors.dart';
 import '../../utils/text_styles.dart';
 import 'queue_screen.dart';
@@ -13,8 +17,28 @@ class NotificationsScreen extends StatefulWidget {
 }
 
 class _NotificationsScreenState extends State<NotificationsScreen> {
+  final FirestoreService _firestoreService = FirestoreService();
+  final AuthService _authService = AuthService();
+  UserModel? _currentUser;
   String _selectedFilter = 'All';
-  final List<String> _filters = ['All', 'Queue', 'Appointments', 'System'];
+  final List<String> _filters = ['All', 'Queue', 'Appointment', 'System'];
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUser();
+  }
+
+  Future<void> _loadUser() async {
+    final user = await _authService.getCurrentUserData();
+    if (mounted) {
+      setState(() {
+        _currentUser = user;
+        _isLoading = false;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -37,56 +61,87 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           ),
         ],
       ),
-      body: Column(
-        children: [
-          // Filter Chips
-          Container(
-            color: AppColors.white,
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: _filters.map((filter) {
-                  final isSelected = _selectedFilter == filter;
-                  return Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: FilterChip(
-                      label: Text(filter),
-                      selected: isSelected,
-                      selectedColor: AppColors.primary.withOpacity(0.2),
-                      checkmarkColor: AppColors.primary,
-                      onSelected: (selected) {
-                        setState(() => _selectedFilter = filter);
-                      },
+      body: _isLoading
+          ? const Center(
+              child: CircularProgressIndicator(color: AppColors.primary))
+          : _currentUser == null
+              ? const Center(child: Text('Please log in'))
+              : Column(
+                  children: [
+                    // Filter Chips
+                    Container(
+                      color: AppColors.white,
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                      child: SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(
+                          children: _filters.map((filter) {
+                            final isSelected = _selectedFilter == filter;
+                            return Padding(
+                              padding: const EdgeInsets.only(right: 8),
+                              child: FilterChip(
+                                label: Text(filter),
+                                selected: isSelected,
+                                selectedColor:
+                                    AppColors.primary.withOpacity(0.2),
+                                checkmarkColor: AppColors.primary,
+                                onSelected: (selected) {
+                                  setState(() => _selectedFilter = filter);
+                                },
+                              ),
+                            );
+                          }).toList(),
+                        ),
+                      ),
                     ),
-                  );
-                }).toList(),
-              ),
-            ),
-          ),
-          // Notifications List
-          Expanded(
-            child: _filteredNotifications.isEmpty
-                ? _buildEmptyState()
-                : ListView.builder(
-                    padding: const EdgeInsets.all(16),
-                    itemCount: _filteredNotifications.length,
-                    itemBuilder: (context, index) {
-                      final notification = _filteredNotifications[index];
-                      return _buildNotificationCard(notification, index);
-                    },
-                  ),
-          ),
-        ],
-      ),
+                    // Notifications List
+                    Expanded(child: _buildNotificationsList()),
+                  ],
+                ),
     );
   }
 
-  List<Map<String, dynamic>> get _filteredNotifications {
-    if (_selectedFilter == 'All') return _notifications;
-    return _notifications
-        .where((n) => n['category'] == _selectedFilter)
-        .toList();
+  Widget _buildNotificationsList() {
+    return StreamBuilder<List<NotificationModel>>(
+      stream: _firestoreService.getUserNotifications(_currentUser!.id),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(
+              child: CircularProgressIndicator(color: AppColors.primary));
+        }
+
+        final allNotifications = snapshot.data ?? [];
+        final notifications = _selectedFilter == 'All'
+            ? allNotifications
+            : allNotifications
+                .where((n) => _getFilterCategory(n.type) == _selectedFilter)
+                .toList();
+
+        if (notifications.isEmpty) {
+          return _buildEmptyState();
+        }
+
+        return ListView.builder(
+          padding: const EdgeInsets.all(16),
+          itemCount: notifications.length,
+          itemBuilder: (context, index) {
+            return _buildNotificationCard(notifications[index]);
+          },
+        );
+      },
+    );
+  }
+
+  String _getFilterCategory(NotificationType type) {
+    switch (type) {
+      case NotificationType.queue:
+        return 'Queue';
+      case NotificationType.appointment:
+        return 'Appointment';
+      case NotificationType.system:
+      case NotificationType.alert:
+        return 'System';
+    }
   }
 
   Widget _buildEmptyState() {
@@ -109,190 +164,148 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     );
   }
 
-  Widget _buildNotificationCard(Map<String, dynamic> notification, int index) {
-    final isUnread = notification['isUnread'] as bool;
-    final iconData = _getNotificationIcon(notification['type']);
-    final iconColor = _getNotificationColor(notification['type']);
+  Widget _buildNotificationCard(NotificationModel notification) {
+    final iconData = _getNotificationIcon(notification.type);
+    final iconColor = _getNotificationColor(notification.type);
 
-    return Dismissible(
-      key: Key(notification['id']),
-      direction: DismissDirection.endToStart,
-      background: Container(
-        alignment: Alignment.centerRight,
-        padding: const EdgeInsets.only(right: 20),
+    return GestureDetector(
+      onTap: () => _handleNotificationTap(notification),
+      child: Container(
         margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: AppColors.error,
+          color: AppColors.white,
           borderRadius: BorderRadius.circular(12),
+          border: !notification.isRead
+              ? Border.all(color: AppColors.primary.withOpacity(0.3), width: 1)
+              : null,
+          boxShadow: [
+            BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)
+          ],
         ),
-        child: const Icon(Icons.delete, color: AppColors.white),
-      ),
-      onDismissed: (direction) {
-        setState(() {
-          _notifications.removeAt(index);
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Notification deleted'),
-            action: SnackBarAction(
-              label: 'Undo',
-              onPressed: () {
-                setState(() {
-                  _notifications.insert(index, notification);
-                });
-              },
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: iconColor.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(iconData, color: iconColor, size: 22),
             ),
-          ),
-        );
-      },
-      child: GestureDetector(
-        onTap: () => _handleNotificationTap(notification),
-        child: Container(
-          margin: const EdgeInsets.only(bottom: 12),
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: AppColors.white,
-            borderRadius: BorderRadius.circular(12),
-            border: isUnread
-                ? Border.all(
-                    color: AppColors.primary.withOpacity(0.3), width: 1)
-                : null,
-            boxShadow: [
-              BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)
-            ],
-          ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Icon
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: iconColor.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Icon(iconData, color: iconColor, size: 22),
-              ),
-              const SizedBox(width: 12),
-              // Content
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            notification['title'],
-                            style: AppTextStyles.bodyMedium.copyWith(
-                              fontWeight: isUnread
-                                  ? FontWeight.w600
-                                  : FontWeight.normal,
-                            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          notification.title,
+                          style: AppTextStyles.bodyMedium.copyWith(
+                            fontWeight: !notification.isRead
+                                ? FontWeight.w600
+                                : FontWeight.normal,
                           ),
                         ),
-                        if (isUnread)
-                          Container(
-                            width: 8,
-                            height: 8,
-                            decoration: const BoxDecoration(
-                              color: AppColors.primary,
-                              shape: BoxShape.circle,
-                            ),
-                          ),
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      notification['message'],
-                      style: AppTextStyles.bodySmall
-                          .copyWith(color: AppColors.textSecondary),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        Icon(Icons.access_time,
-                            size: 14, color: AppColors.textHint),
-                        const SizedBox(width: 4),
-                        Text(
-                          notification['time'],
-                          style: AppTextStyles.caption
-                              .copyWith(color: AppColors.textHint),
-                        ),
-                        const Spacer(),
+                      ),
+                      if (!notification.isRead)
                         Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 8, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: AppColors.grey200,
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Text(
-                            notification['category'],
-                            style: AppTextStyles.caption
-                                .copyWith(color: AppColors.textSecondary),
+                          width: 8,
+                          height: 8,
+                          decoration: const BoxDecoration(
+                            color: AppColors.primary,
+                            shape: BoxShape.circle,
                           ),
                         ),
-                      ],
-                    ),
-                  ],
-                ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    notification.message,
+                    style: AppTextStyles.bodySmall
+                        .copyWith(color: AppColors.textSecondary),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Icon(Icons.access_time,
+                          size: 14, color: AppColors.textHint),
+                      const SizedBox(width: 4),
+                      Text(
+                        _formatTime(notification.createdAt),
+                        style: AppTextStyles.caption
+                            .copyWith(color: AppColors.textHint),
+                      ),
+                      const Spacer(),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: AppColors.grey200,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          notification.typeDisplay,
+                          style: AppTextStyles.caption
+                              .copyWith(color: AppColors.textSecondary),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
   }
 
-  IconData _getNotificationIcon(String type) {
+  String _formatTime(DateTime dateTime) {
+    final now = DateTime.now();
+    final diff = now.difference(dateTime);
+    if (diff.inMinutes < 60) return '${diff.inMinutes} min ago';
+    if (diff.inHours < 24) return '${diff.inHours} hours ago';
+    if (diff.inDays < 7) return '${diff.inDays} days ago';
+    return '${dateTime.month}/${dateTime.day}/${dateTime.year}';
+  }
+
+  IconData _getNotificationIcon(NotificationType type) {
     switch (type) {
-      case 'queue_update':
-        return Icons.people_outline;
-      case 'queue_called':
-        return Icons.campaign_outlined;
-      case 'appointment_confirmed':
+      case NotificationType.queue:
+        return Icons.confirmation_number_outlined;
+      case NotificationType.appointment:
         return Icons.event_available;
-      case 'appointment_reminder':
-        return Icons.notifications_active_outlined;
-      case 'doctor_ready':
-        return Icons.medical_services_outlined;
-      case 'nurse_ready':
-        return Icons.health_and_safety_outlined;
-      case 'system':
+      case NotificationType.system:
         return Icons.info_outline;
-      default:
-        return Icons.notifications_outlined;
+      case NotificationType.alert:
+        return Icons.warning_amber_outlined;
     }
   }
 
-  Color _getNotificationColor(String type) {
+  Color _getNotificationColor(NotificationType type) {
     switch (type) {
-      case 'queue_update':
+      case NotificationType.queue:
         return AppColors.cardBlue;
-      case 'queue_called':
-        return AppColors.success;
-      case 'appointment_confirmed':
+      case NotificationType.appointment:
         return AppColors.cardGreen;
-      case 'appointment_reminder':
-        return AppColors.cardOrange;
-      case 'doctor_ready':
-        return AppColors.primary;
-      case 'nurse_ready':
-        return AppColors.cardCyan;
-      case 'system':
+      case NotificationType.system:
         return AppColors.cardPurple;
-      default:
-        return AppColors.textSecondary;
+      case NotificationType.alert:
+        return AppColors.cardOrange;
     }
   }
 
-  void _handleNotificationTap(Map<String, dynamic> notification) {
-    setState(() {
-      notification['isUnread'] = false;
-    });
+  void _handleNotificationTap(NotificationModel notification) {
+    // Mark as read
+    if (!notification.isRead) {
+      _firestoreService.markNotificationAsRead(notification.id);
+    }
 
     // Show notification details
     showModalBottomSheet(
@@ -311,13 +324,13 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: _getNotificationColor(notification['type'])
+                    color: _getNotificationColor(notification.type)
                         .withOpacity(0.1),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Icon(
-                    _getNotificationIcon(notification['type']),
-                    color: _getNotificationColor(notification['type']),
+                    _getNotificationIcon(notification.type),
+                    color: _getNotificationColor(notification.type),
                     size: 28,
                   ),
                 ),
@@ -326,8 +339,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(notification['title'], style: AppTextStyles.h6),
-                      Text(notification['time'],
+                      Text(notification.title, style: AppTextStyles.h6),
+                      Text(_formatTime(notification.createdAt),
                           style: AppTextStyles.caption
                               .copyWith(color: AppColors.textSecondary)),
                     ],
@@ -336,8 +349,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
               ],
             ),
             const SizedBox(height: 20),
-            Text(notification['message'], style: AppTextStyles.bodyMedium),
-            if (notification['action'] != null) ...[
+            Text(notification.message, style: AppTextStyles.bodyMedium),
+            if (notification.actionUrl != null) ...[
               const SizedBox(height: 20),
               SizedBox(
                 width: double.infinity,
@@ -348,7 +361,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                   },
                   style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.primary),
-                  child: Text(notification['action']),
+                  child: const Text('View Details'),
                 ),
               ),
             ],
@@ -359,138 +372,30 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     );
   }
 
-  void _handleNotificationAction(Map<String, dynamic> notification) {
-    final action = notification['action'];
-    
-    switch (action) {
-      case 'View Queue Status':
-        // Navigate to Queue Screen
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (context) => const QueueScreen()),
-        );
+  void _handleNotificationAction(NotificationModel notification) {
+    switch (notification.type) {
+      case NotificationType.queue:
+        Navigator.push(
+            context, MaterialPageRoute(builder: (_) => const QueueScreen()));
         break;
-      case 'View Appointment':
-      case 'View Details':
-        // Navigate to Appointments Screen
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (context) => const AppointmentsScreen()),
-        );
+      case NotificationType.appointment:
+        Navigator.push(context,
+            MaterialPageRoute(builder: (_) => const AppointmentsScreen()));
         break;
-      case 'View Results':
-        // Navigate to Records Screen (Lab Results tab)
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (context) => const RecordsScreen()),
-        );
+      case NotificationType.system:
+      case NotificationType.alert:
+        Navigator.push(
+            context, MaterialPageRoute(builder: (_) => const RecordsScreen()));
         break;
-      default:
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Action: $action')),
-        );
     }
   }
 
-  void _markAllAsRead() {
-    setState(() {
-      for (var notification in _notifications) {
-        notification['isUnread'] = false;
-      }
-    });
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('All notifications marked as read')),
-    );
+  void _markAllAsRead() async {
+    if (_currentUser != null) {
+      await _firestoreService.markAllNotificationsAsRead(_currentUser!.id);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('All notifications marked as read')),
+      );
+    }
   }
-
-  final List<Map<String, dynamic>> _notifications = [
-    {
-      'id': '1',
-      'type': 'queue_called',
-      'category': 'Queue',
-      'title': 'Your Turn is Coming!',
-      'message':
-          'You are now 2nd in queue. Please proceed to the waiting area near Room 105.',
-      'time': '5 minutes ago',
-      'isUnread': true,
-      'action': 'View Queue Status',
-    },
-    {
-      'id': '2',
-      'type': 'appointment_confirmed',
-      'category': 'Appointments',
-      'title': 'Appointment Confirmed',
-      'message':
-          'Your appointment with Dr. Maria Santos on December 10, 2024 at 10:00 AM has been confirmed.',
-      'time': '1 hour ago',
-      'isUnread': true,
-      'action': 'View Appointment',
-    },
-    {
-      'id': '3',
-      'type': 'nurse_ready',
-      'category': 'Queue',
-      'title': 'Nurse is Ready',
-      'message':
-          'The nurse is ready to take your vital signs. Please proceed to the nursing station.',
-      'time': '2 hours ago',
-      'isUnread': true,
-      'action': null,
-    },
-    {
-      'id': '4',
-      'type': 'appointment_reminder',
-      'category': 'Appointments',
-      'title': 'Appointment Reminder',
-      'message':
-          'Reminder: You have an appointment tomorrow with Dr. Juan Cruz at 2:00 PM.',
-      'time': 'Yesterday',
-      'isUnread': false,
-      'action': 'View Details',
-    },
-    {
-      'id': '5',
-      'type': 'queue_update',
-      'category': 'Queue',
-      'title': 'Queue Status Update',
-      'message':
-          'Your position in queue has changed. Current position: 5th. Estimated wait time: ~25 minutes.',
-      'time': 'Yesterday',
-      'isUnread': false,
-      'action': null,
-    },
-    {
-      'id': '6',
-      'type': 'doctor_ready',
-      'category': 'Queue',
-      'title': 'Doctor is Ready',
-      'message':
-          'Dr. Maria Santos is ready to see you. Please proceed to Room 105.',
-      'time': '2 days ago',
-      'isUnread': false,
-      'action': null,
-    },
-    {
-      'id': '7',
-      'type': 'system',
-      'category': 'System',
-      'title': 'Lab Results Available',
-      'message':
-          'Your Complete Blood Count (CBC) results are now available. You can view them in your medical records.',
-      'time': '3 days ago',
-      'isUnread': false,
-      'action': 'View Results',
-    },
-    {
-      'id': '8',
-      'type': 'system',
-      'category': 'System',
-      'title': 'Prescription Ready',
-      'message':
-          'Your prescription has been prepared. You can pick it up at the pharmacy.',
-      'time': '1 week ago',
-      'isUnread': false,
-      'action': null,
-    },
-  ];
 }

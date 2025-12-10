@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import '../../models/user_model.dart';
 import '../../services/auth_service.dart';
+import '../../services/firestore_service.dart';
 import '../../utils/colors.dart';
 import '../../utils/text_styles.dart';
 import '../../widgets/dashboard_tile.dart';
@@ -19,8 +21,37 @@ class AdminHomeScreen extends StatefulWidget {
 
 class _AdminHomeScreenState extends State<AdminHomeScreen> {
   final AuthService _authService = AuthService();
+  final FirestoreService _firestoreService = FirestoreService();
+  UserModel? _currentUser;
   int _selectedNavIndex = 0;
   bool _isSidebarExpanded = true;
+  int _totalUsers = 0;
+  int _totalDoctors = 0;
+  int _totalNurses = 0;
+  int _todayTickets = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadData();
+  }
+
+  Future<void> _loadData() async {
+    final user = await _authService.getCurrentUserData();
+    if (user != null && mounted) {
+      setState(() => _currentUser = user);
+    }
+    // Get stats
+    final stats = await _firestoreService.getAdminDashboardStats();
+    if (mounted) {
+      setState(() {
+        _totalUsers = stats['totalUsers'] ?? 0;
+        _totalDoctors = stats['totalDoctors'] ?? 0;
+        _totalNurses = stats['totalNurses'] ?? 0;
+        _todayTickets = stats['todayTickets'] ?? 0;
+      });
+    }
+  }
 
   final List<_NavItem> _navItems = [
     _NavItem(icon: Icons.dashboard_outlined, label: 'Dashboard'),
@@ -103,7 +134,7 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
                     child: Icon(Icons.admin_panel_settings,
                         size: 16, color: AppColors.white)),
                 const SizedBox(width: 8),
-                Text('System Admin',
+                Text(_currentUser?.fullName ?? 'Admin',
                     style: AppTextStyles.bodySmall
                         .copyWith(color: AppColors.white)),
               ],
@@ -201,20 +232,32 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
     return Row(
       children: [
         Expanded(
-            child: _buildStatCard('Total Users', '156', AppColors.cardBlue,
-                Icons.people, '+12 this week')),
+            child: _buildStatCard('Total Users', '$_totalUsers',
+                AppColors.cardBlue, Icons.people, 'All registered users')),
         const SizedBox(width: 16),
         Expanded(
-            child: _buildStatCard('Patients Today', '42', AppColors.cardGreen,
-                Icons.person, '+8 from yesterday')),
+            child: _buildStatCard(
+                'Today\'s Tickets',
+                '$_todayTickets',
+                AppColors.cardGreen,
+                Icons.confirmation_number,
+                'Queue tickets')),
         const SizedBox(width: 16),
         Expanded(
-            child: _buildStatCard('Active Doctors', '8', AppColors.cardPurple,
-                Icons.medical_services, '2 on break')),
+            child: _buildStatCard(
+                'Doctors',
+                '$_totalDoctors',
+                AppColors.cardPurple,
+                Icons.medical_services,
+                'Registered doctors')),
         const SizedBox(width: 16),
         Expanded(
-            child: _buildStatCard('Queue Status', '12', AppColors.cardOrange,
-                Icons.queue, '3 waiting')),
+            child: _buildStatCard(
+                'Nurses',
+                '$_totalNurses',
+                AppColors.cardOrange,
+                Icons.health_and_safety,
+                'Registered nurses')),
       ],
     );
   }

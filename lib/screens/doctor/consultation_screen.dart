@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import '../../models/ticket_model.dart';
+import '../../services/auth_service.dart';
+import '../../services/firestore_service.dart';
 import '../../utils/colors.dart';
 import '../../utils/text_styles.dart';
 
@@ -12,14 +15,50 @@ class ConsultationScreen extends StatefulWidget {
 
 class _ConsultationScreenState extends State<ConsultationScreen>
     with SingleTickerProviderStateMixin {
+  final FirestoreService _firestoreService = FirestoreService();
+  final AuthService _authService = AuthService();
   late TabController _tabController;
+  String? _currentUserId;
   Map<String, dynamic>? _currentPatient;
+  List<Map<String, dynamic>> _queuePatients = [];
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
-    _currentPatient = widget.patient ?? _queuePatients.first;
+    _loadData();
+  }
+
+  Future<void> _loadData() async {
+    final user = await _authService.getCurrentUserData();
+    if (mounted && user != null) {
+      setState(() => _currentUserId = user.id);
+      _loadPatientQueue();
+    }
+  }
+
+  void _loadPatientQueue() {
+    if (_currentUserId == null) return;
+    _firestoreService.getDoctorTickets(_currentUserId!).listen((tickets) {
+      if (mounted) {
+        setState(() {
+          _queuePatients = tickets
+              .map((t) => {
+                    'id': t.id,
+                    'queue': t.queueNumber.toString().padLeft(2, '0'),
+                    'name': t.patientName,
+                    'age': 'Patient',
+                    'complaint': t.chiefComplaint ?? 'General Consultation',
+                    'urgent': t.priority == TicketPriority.emergency,
+                    'ticketModel': t,
+                  })
+              .toList();
+          if (_currentPatient == null && _queuePatients.isNotEmpty) {
+            _currentPatient = _queuePatients.first;
+          }
+        });
+      }
+    });
   }
 
   @override
@@ -568,8 +607,7 @@ class _ConsultationScreenState extends State<ConsultationScreen>
                         child: TextField(
                             style: const TextStyle(color: AppColors.inputText),
                             decoration: const InputDecoration(
-                                labelText: 'Dosage',
-                                hintText: 'mg'))),
+                                labelText: 'Dosage', hintText: 'mg'))),
                   ],
                 ),
                 const SizedBox(height: 12),
@@ -729,8 +767,8 @@ class _ConsultationScreenState extends State<ConsultationScreen>
                   ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
                       content: Text('Lab order created successfully')));
                 },
-                style:
-                    ElevatedButton.styleFrom(backgroundColor: AppColors.cardCyan),
+                style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.cardCyan),
                 child: const Text('Order Tests')),
           ],
         ),
@@ -755,8 +793,7 @@ class _ConsultationScreenState extends State<ConsultationScreen>
                     dropdownColor: AppColors.inputBackground,
                     style: const TextStyle(color: AppColors.inputText),
                     decoration: const InputDecoration(
-                        labelText: 'Certificate Type',
-                        hintText: 'Select type'),
+                        labelText: 'Certificate Type', hintText: 'Select type'),
                     items: [
                       'Medical Certificate',
                       'Fit to Work',
@@ -769,8 +806,7 @@ class _ConsultationScreenState extends State<ConsultationScreen>
                                 style: const TextStyle(
                                     color: AppColors.inputText))))
                         .toList(),
-                    onChanged: (v) =>
-                        setDialogState(() => selectedType = v)),
+                    onChanged: (v) => setDialogState(() => selectedType = v)),
                 const SizedBox(height: 12),
                 Row(
                   children: [
@@ -865,8 +901,7 @@ class _ConsultationScreenState extends State<ConsultationScreen>
                                 style: const TextStyle(
                                     color: AppColors.inputText))))
                         .toList(),
-                    onChanged: (v) =>
-                        setDialogState(() => selectedTime = v)),
+                    onChanged: (v) => setDialogState(() => selectedTime = v)),
                 const SizedBox(height: 12),
                 TextField(
                     style: const TextStyle(color: AppColors.inputText),
@@ -939,8 +974,7 @@ class _ConsultationScreenState extends State<ConsultationScreen>
                               style:
                                   const TextStyle(color: AppColors.inputText))))
                       .toList(),
-                  onChanged: (v) =>
-                      setDialogState(() => selectedType = v)),
+                  onChanged: (v) => setDialogState(() => selectedType = v)),
             ],
           ),
           actions: [
@@ -963,6 +997,8 @@ class _ConsultationScreenState extends State<ConsultationScreen>
   }
 
   void _completeConsultation() {
+    if (_currentPatient == null) return;
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -974,7 +1010,11 @@ class _ConsultationScreenState extends State<ConsultationScreen>
               onPressed: () => Navigator.pop(context),
               child: const Text('Cancel')),
           ElevatedButton(
-            onPressed: () {
+            onPressed: () async {
+              final ticketId = _currentPatient!['id'] as String?;
+              if (ticketId != null) {
+                await _firestoreService.completeTicket(ticketId);
+              }
               Navigator.pop(context);
               ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
                   content: Text('Consultation completed successfully')));
@@ -991,35 +1031,4 @@ class _ConsultationScreenState extends State<ConsultationScreen>
       ),
     );
   }
-
-  final List<Map<String, dynamic>> _queuePatients = [
-    {
-      'queue': '02',
-      'name': 'Maria Santos',
-      'age': '32 yrs, F',
-      'complaint': 'Follow-up checkup',
-      'urgent': true
-    },
-    {
-      'queue': '03',
-      'name': 'Pedro Garcia',
-      'age': '28 yrs, M',
-      'complaint': 'Cough and cold',
-      'urgent': false
-    },
-    {
-      'queue': '04',
-      'name': 'Ana Reyes',
-      'age': '55 yrs, F',
-      'complaint': 'BP monitoring',
-      'urgent': false
-    },
-    {
-      'queue': '05',
-      'name': 'Jose Rizal',
-      'age': '62 yrs, M',
-      'complaint': 'Diabetes follow-up',
-      'urgent': false
-    },
-  ];
 }

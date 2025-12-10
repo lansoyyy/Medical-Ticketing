@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../../models/user_model.dart';
+import '../../services/firestore_service.dart';
 import '../../utils/colors.dart';
 import '../../utils/text_styles.dart';
 
@@ -11,6 +13,7 @@ class UserManagementScreen extends StatefulWidget {
 
 class _UserManagementScreenState extends State<UserManagementScreen>
     with SingleTickerProviderStateMixin {
+  final FirestoreService _firestoreService = FirestoreService();
   late TabController _tabController;
   String _searchQuery = '';
   String _selectedStatus = 'All Status';
@@ -100,10 +103,10 @@ class _UserManagementScreenState extends State<UserManagementScreen>
             child: TabBarView(
               controller: _tabController,
               children: [
-                _buildUserList(_patients, 'Patient'),
-                _buildUserList(_nurses, 'Nurse'),
-                _buildUserList(_doctors, 'Doctor'),
-                _buildUserList(_admins, 'Admin'),
+                _buildUserStream('patient'),
+                _buildUserStream('nurse'),
+                _buildUserStream('doctor'),
+                _buildUserStream('admin'),
               ],
             ),
           ),
@@ -112,23 +115,35 @@ class _UserManagementScreenState extends State<UserManagementScreen>
     );
   }
 
-  Widget _buildUserList(List<Map<String, dynamic>> users, String role) {
+  Widget _buildUserStream(String role) {
+    return StreamBuilder<List<UserModel>>(
+      stream: _firestoreService.getUsersByRole(role),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(
+              child: CircularProgressIndicator(color: AppColors.primary));
+        }
+        final users = snapshot.data ?? [];
+        return _buildUserListFromModels(users, role);
+      },
+    );
+  }
+
+  Widget _buildUserListFromModels(List<UserModel> users, String role) {
     var filtered = users;
 
-    // Filter by search query
     if (_searchQuery.isNotEmpty) {
       filtered = filtered
-          .where((u) => u['name']
-              .toString()
-              .toLowerCase()
-              .contains(_searchQuery.toLowerCase()))
+          .where((u) =>
+              u.fullName.toLowerCase().contains(_searchQuery.toLowerCase()))
           .toList();
     }
 
-    // Filter by status
     if (_selectedStatus != 'All Status') {
       filtered = filtered
-          .where((u) => u['status'] == _selectedStatus)
+          .where((u) =>
+              (u.isActive && _selectedStatus == 'Active') ||
+              (!u.isActive && _selectedStatus == 'Inactive'))
           .toList();
     }
 
@@ -142,13 +157,6 @@ class _UserManagementScreenState extends State<UserManagementScreen>
             Text('No users found',
                 style: AppTextStyles.bodyLarge
                     .copyWith(color: AppColors.textSecondary)),
-            const SizedBox(height: 8),
-            Text(
-              _selectedStatus != 'All Status'
-                  ? 'No $role with "$_selectedStatus" status'
-                  : 'Try a different search',
-              style: AppTextStyles.bodySmall.copyWith(color: AppColors.textHint),
-            ),
           ],
         ),
       );
@@ -157,12 +165,12 @@ class _UserManagementScreenState extends State<UserManagementScreen>
     return ListView.builder(
       padding: const EdgeInsets.all(16),
       itemCount: filtered.length,
-      itemBuilder: (context, index) => _buildUserCard(filtered[index], role),
+      itemBuilder: (context, index) =>
+          _buildUserCardFromModel(filtered[index], role),
     );
   }
 
-  Widget _buildUserCard(Map<String, dynamic> user, String role) {
-    final isActive = user['status'] == 'Active';
+  Widget _buildUserCardFromModel(UserModel user, String role) {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
@@ -173,7 +181,7 @@ class _UserManagementScreenState extends State<UserManagementScreen>
           CircleAvatar(
             radius: 24,
             backgroundColor: _getRoleColor(role).withOpacity(0.1),
-            child: Text(user['name'][0],
+            child: Text(user.fullName.isNotEmpty ? user.fullName[0] : '?',
                 style: AppTextStyles.bodyLarge.copyWith(
                     color: _getRoleColor(role), fontWeight: FontWeight.bold)),
           ),
@@ -182,72 +190,52 @@ class _UserManagementScreenState extends State<UserManagementScreen>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  children: [
-                    Text(user['name'],
-                        style: AppTextStyles.bodyMedium
-                            .copyWith(fontWeight: FontWeight.w600)),
-                    const SizedBox(width: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 2),
-                      decoration: BoxDecoration(
-                          color: isActive
-                              ? AppColors.success.withOpacity(0.1)
-                              : AppColors.error.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(12)),
-                      child: Text(user['status'],
-                          style: AppTextStyles.caption.copyWith(
-                              color: isActive
-                                  ? AppColors.success
-                                  : AppColors.error)),
-                    ),
-                  ],
-                ),
+                Row(children: [
+                  Text(user.fullName,
+                      style: AppTextStyles.bodyMedium
+                          .copyWith(fontWeight: FontWeight.w600)),
+                  const SizedBox(width: 8),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                        color: user.isActive
+                            ? AppColors.success.withOpacity(0.1)
+                            : AppColors.error.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(12)),
+                    child: Text(user.isActive ? 'Active' : 'Inactive',
+                        style: AppTextStyles.caption.copyWith(
+                            color: user.isActive
+                                ? AppColors.success
+                                : AppColors.error)),
+                  ),
+                ]),
                 const SizedBox(height: 4),
-                Text(user['email'],
+                Text(user.email,
                     style: AppTextStyles.caption
                         .copyWith(color: AppColors.textSecondary)),
-                if (user['department'] != null)
-                  Text(user['department'],
-                      style: AppTextStyles.caption
-                          .copyWith(color: AppColors.cardBlue)),
               ],
             ),
           ),
-          Text('ID: ${user['id']}',
+          Text('ID: ${user.id.substring(0, 8)}...',
               style: AppTextStyles.caption.copyWith(color: AppColors.textHint)),
           const SizedBox(width: 16),
           PopupMenuButton<String>(
-            onSelected: (action) => _handleUserAction(action, user, role),
+            onSelected: (action) => _handleUserActionFromModel(action, user),
             itemBuilder: (context) => [
               const PopupMenuItem(
                   value: 'view',
                   child: Row(children: [
                     Icon(Icons.visibility, size: 18),
                     SizedBox(width: 8),
-                    Text('View Details')
+                    Text('View')
                   ])),
               const PopupMenuItem(
-                  value: 'edit',
-                  child: Row(children: [
-                    Icon(Icons.edit, size: 18),
-                    SizedBox(width: 8),
-                    Text('Edit')
-                  ])),
-              const PopupMenuItem(
-                  value: 'permissions',
-                  child: Row(children: [
-                    Icon(Icons.security, size: 18),
-                    SizedBox(width: 8),
-                    Text('Permissions')
-                  ])),
-              PopupMenuItem(
                   value: 'toggle',
                   child: Row(children: [
-                    Icon(isActive ? Icons.block : Icons.check_circle, size: 18),
+                    Icon(Icons.sync, size: 18),
                     SizedBox(width: 8),
-                    Text(isActive ? 'Deactivate' : 'Activate')
+                    Text('Toggle Status')
                   ])),
               const PopupMenuItem(
                   value: 'delete',
@@ -257,6 +245,80 @@ class _UserManagementScreenState extends State<UserManagementScreen>
                     Text('Delete', style: TextStyle(color: AppColors.error))
                   ])),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _handleUserActionFromModel(String action, UserModel user) async {
+    switch (action) {
+      case 'view':
+        _showUserDetailsFromModel(user);
+        break;
+      case 'toggle':
+        await _firestoreService
+            .updateUser(user.id, {'isActive': !user.isActive});
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content:
+                Text('User ${user.isActive ? 'deactivated' : 'activated'}')));
+        break;
+      case 'delete':
+        _confirmDeleteUserFromModel(user);
+        break;
+    }
+  }
+
+  void _showUserDetailsFromModel(UserModel user) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(children: [
+          CircleAvatar(
+              backgroundColor: AppColors.primary.withOpacity(0.1),
+              child: Text(user.fullName.isNotEmpty ? user.fullName[0] : '?',
+                  style: TextStyle(color: AppColors.primary))),
+          const SizedBox(width: 12),
+          Text(user.fullName),
+        ]),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildDetailRow('Email', user.email),
+            _buildDetailRow('Phone', user.phone),
+            _buildDetailRow('Role', user.role),
+            _buildDetailRow('Status', user.isActive ? 'Active' : 'Inactive'),
+          ],
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Close'))
+        ],
+      ),
+    );
+  }
+
+  void _confirmDeleteUserFromModel(UserModel user) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete User'),
+        content: Text('Are you sure you want to delete ${user.fullName}?'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel')),
+          ElevatedButton(
+            onPressed: () async {
+              await _firestoreService.deleteUser(user.id);
+              Navigator.pop(context);
+              ScaffoldMessenger.of(context)
+                  .showSnackBar(const SnackBar(content: Text('User deleted')));
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.error),
+            child: const Text('Delete'),
           ),
         ],
       ),
@@ -275,27 +337,6 @@ class _UserManagementScreenState extends State<UserManagementScreen>
         return AppColors.cardRed;
       default:
         return AppColors.grey500;
-    }
-  }
-
-  void _handleUserAction(
-      String action, Map<String, dynamic> user, String role) {
-    switch (action) {
-      case 'view':
-        _showUserDetailsDialog(user, role);
-        break;
-      case 'edit':
-        _showEditUserDialog(user, role);
-        break;
-      case 'permissions':
-        _showPermissionsDialog(user, role);
-        break;
-      case 'toggle':
-        _toggleUserStatus(user);
-        break;
-      case 'delete':
-        _confirmDeleteUser(user);
-        break;
     }
   }
 
@@ -400,11 +441,11 @@ class _UserManagementScreenState extends State<UserManagementScreen>
             ElevatedButton(
                 onPressed: () {
                   Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('User created successfully')));
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                      content: Text('User created successfully')));
                 },
-                style:
-                    ElevatedButton.styleFrom(backgroundColor: AppColors.cardOrange),
+                style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.cardOrange),
                 child: const Text('Create User')),
           ],
         ),
@@ -555,109 +596,4 @@ class _UserManagementScreenState extends State<UserManagementScreen>
       ),
     );
   }
-
-  void _toggleUserStatus(Map<String, dynamic> user) {
-    setState(() =>
-        user['status'] = user['status'] == 'Active' ? 'Inactive' : 'Active');
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(
-            'User ${user['status'] == 'Active' ? 'activated' : 'deactivated'}')));
-  }
-
-  void _confirmDeleteUser(Map<String, dynamic> user) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Delete User'),
-        content: Text(
-            'Are you sure you want to delete ${user['name']}? This action cannot be undone.'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel')),
-          ElevatedButton(
-              onPressed: () {
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('User deleted')));
-              },
-              style: ElevatedButton.styleFrom(backgroundColor: AppColors.error),
-              child: const Text('Delete')),
-        ],
-      ),
-    );
-  }
-
-  final List<Map<String, dynamic>> _patients = [
-    {
-      'id': 'P-001',
-      'name': 'Juan Dela Cruz',
-      'email': 'juan@email.com',
-      'phone': '+63 912 345 6789',
-      'status': 'Active'
-    },
-    {
-      'id': 'P-002',
-      'name': 'Maria Santos',
-      'email': 'maria@email.com',
-      'phone': '+63 917 123 4567',
-      'status': 'Active'
-    },
-    {
-      'id': 'P-003',
-      'name': 'Pedro Garcia',
-      'email': 'pedro@email.com',
-      'phone': '+63 918 765 4321',
-      'status': 'Inactive'
-    },
-  ];
-
-  final List<Map<String, dynamic>> _nurses = [
-    {
-      'id': 'N-001',
-      'name': 'Ana Reyes',
-      'email': 'ana.reyes@clinic.com',
-      'department': 'General Ward',
-      'status': 'Active'
-    },
-    {
-      'id': 'N-002',
-      'name': 'Rosa Luna',
-      'email': 'rosa.luna@clinic.com',
-      'department': 'Emergency',
-      'status': 'Active'
-    },
-  ];
-
-  final List<Map<String, dynamic>> _doctors = [
-    {
-      'id': 'D-001',
-      'name': 'Dr. Maria Santos',
-      'email': 'dr.santos@clinic.com',
-      'department': 'General Medicine',
-      'status': 'Active'
-    },
-    {
-      'id': 'D-002',
-      'name': 'Dr. Juan Cruz',
-      'email': 'dr.cruz@clinic.com',
-      'department': 'Pediatrics',
-      'status': 'Active'
-    },
-  ];
-
-  final List<Map<String, dynamic>> _admins = [
-    {
-      'id': 'A-001',
-      'name': 'System Admin',
-      'email': 'admin@clinic.com',
-      'status': 'Active'
-    },
-    {
-      'id': 'A-002',
-      'name': 'IT Support',
-      'email': 'support@clinic.com',
-      'status': 'Active'
-    },
-  ];
 }

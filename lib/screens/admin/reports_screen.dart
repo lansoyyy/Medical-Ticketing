@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../services/firestore_service.dart';
 import '../../utils/colors.dart';
 import '../../utils/text_styles.dart';
 
@@ -11,13 +12,27 @@ class ReportsScreen extends StatefulWidget {
 
 class _ReportsScreenState extends State<ReportsScreen>
     with SingleTickerProviderStateMixin {
+  final FirestoreService _firestoreService = FirestoreService();
   late TabController _tabController;
   String _selectedPeriod = 'This Month';
+  Map<String, dynamic> _stats = {};
+  bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 4, vsync: this);
+    _loadStats();
+  }
+
+  Future<void> _loadStats() async {
+    final stats = await _firestoreService.getAdminDashboardStats();
+    if (mounted) {
+      setState(() {
+        _stats = stats;
+        _isLoading = false;
+      });
+    }
   }
 
   @override
@@ -85,6 +100,10 @@ class _ReportsScreenState extends State<ReportsScreen>
   }
 
   Widget _buildOverviewTab() {
+    if (_isLoading) {
+      return const Center(
+          child: CircularProgressIndicator(color: AppColors.primary));
+    }
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24),
       child: Column(
@@ -93,20 +112,36 @@ class _ReportsScreenState extends State<ReportsScreen>
           Row(
             children: [
               Expanded(
-                  child: _buildStatCard('Total Patients', '1,245', '+12%',
-                      AppColors.cardGreen, Icons.people)),
+                  child: _buildStatCard(
+                      'Total Patients',
+                      '${_stats['totalPatients'] ?? 0}',
+                      '+12%',
+                      AppColors.cardGreen,
+                      Icons.people)),
               const SizedBox(width: 16),
               Expanded(
-                  child: _buildStatCard('Consultations', '856', '+8%',
-                      AppColors.cardBlue, Icons.medical_services)),
+                  child: _buildStatCard(
+                      'Today Tickets',
+                      '${_stats['todayTickets'] ?? 0}',
+                      '+8%',
+                      AppColors.cardBlue,
+                      Icons.confirmation_number)),
               const SizedBox(width: 16),
               Expanded(
-                  child: _buildStatCard('Prescriptions', '623', '+15%',
-                      AppColors.cardPurple, Icons.medication)),
+                  child: _buildStatCard(
+                      'Completed',
+                      '${_stats['completedToday'] ?? 0}',
+                      '+15%',
+                      AppColors.cardPurple,
+                      Icons.check_circle)),
               const SizedBox(width: 16),
               Expanded(
-                  child: _buildStatCard('Avg Wait Time', '18 min', '-5%',
-                      AppColors.cardOrange, Icons.timer)),
+                  child: _buildStatCard(
+                      'Active Staff',
+                      '${(_stats['activeDoctors'] ?? 0) + (_stats['activeNurses'] ?? 0)}',
+                      '+5%',
+                      AppColors.cardOrange,
+                      Icons.people_alt)),
             ],
           ),
           const SizedBox(height: 24),

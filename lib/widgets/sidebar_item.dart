@@ -52,31 +52,6 @@ class SidebarItem extends StatelessWidget {
                         : AppColors.white.withOpacity(0.8),
                     size: 22,
                   ),
-                  if (badgeCount != null && badgeCount! > 0)
-                    Positioned(
-                      right: -8,
-                      top: -8,
-                      child: Container(
-                        padding: const EdgeInsets.all(4),
-                        decoration: const BoxDecoration(
-                          color: AppColors.cardRed,
-                          shape: BoxShape.circle,
-                        ),
-                        constraints: const BoxConstraints(
-                          minWidth: 18,
-                          minHeight: 18,
-                        ),
-                        child: Text(
-                          badgeCount! > 99 ? '99+' : badgeCount.toString(),
-                          style: const TextStyle(
-                            color: AppColors.white,
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
-                      ),
-                    ),
                 ],
               ),
               if (isExpanded) ...[

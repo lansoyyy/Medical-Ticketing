@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import '../../models/ticket_model.dart';
+import '../../models/user_model.dart';
 import '../../services/auth_service.dart';
+import '../../services/firestore_service.dart';
 import '../../utils/colors.dart';
 import '../../utils/text_styles.dart';
 import '../../widgets/dashboard_tile.dart';
@@ -18,8 +21,43 @@ class DoctorHomeScreen extends StatefulWidget {
 
 class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
   final AuthService _authService = AuthService();
+  final FirestoreService _firestoreService = FirestoreService();
+  UserModel? _currentUser;
   int _selectedNavIndex = 0;
   bool _isSidebarExpanded = true;
+  int _waitingCount = 0;
+  int _consultedToday = 0;
+  List<TicketModel> _myPatients = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadData();
+  }
+
+  Future<void> _loadData() async {
+    final user = await _authService.getCurrentUserData();
+    if (user != null && mounted) {
+      setState(() => _currentUser = user);
+      // Listen to tickets assigned to this doctor
+      _firestoreService.getDoctorTickets(user.id).listen((tickets) {
+        if (mounted) {
+          setState(() {
+            _myPatients = tickets
+                .where((t) =>
+                    t.status == TicketStatus.called ||
+                    t.status == TicketStatus.inProgress)
+                .take(5)
+                .toList();
+            _waitingCount =
+                tickets.where((t) => t.status == TicketStatus.called).length;
+            _consultedToday =
+                tickets.where((t) => t.status == TicketStatus.completed).length;
+          });
+        }
+      });
+    }
+  }
 
   final List<_NavItem> _navItems = [
     _NavItem(icon: Icons.dashboard_outlined, label: 'Dashboard'),
@@ -135,7 +173,7 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
                     child: Icon(Icons.person,
                         size: 18, color: AppColors.cardBlue)),
                 const SizedBox(width: 8),
-                Text('Dr. Maria Santos',
+                Text('Dr. ${_currentUser?.fullName ?? 'Doctor'}',
                     style: AppTextStyles.bodySmall
                         .copyWith(color: AppColors.white)),
               ],
@@ -233,11 +271,13 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Good Morning, Dr. Santos!',
+                      Text(
+                          'Good Morning, Dr. ${_currentUser?.lastName ?? 'Doctor'}!',
                           style: AppTextStyles.h4
                               .copyWith(color: AppColors.white)),
                       const SizedBox(height: 4),
-                      Text('You have 5 patients waiting in your queue.',
+                      Text(
+                          'You have $_waitingCount patients waiting in your queue.',
                           style: AppTextStyles.bodyMedium.copyWith(
                               color: AppColors.white.withOpacity(0.9))),
                     ],
@@ -271,20 +311,16 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
     return Row(
       children: [
         Expanded(
-            child: _buildStatCard(
-                'In Queue', '5', AppColors.cardOrange, Icons.people)),
+            child: _buildStatCard('In Queue', '$_waitingCount',
+                AppColors.cardOrange, Icons.people)),
         const SizedBox(width: 16),
         Expanded(
-            child: _buildStatCard(
-                'Completed Today', '8', AppColors.success, Icons.check_circle)),
+            child: _buildStatCard('Completed', '$_consultedToday',
+                AppColors.success, Icons.check_circle)),
         const SizedBox(width: 16),
         Expanded(
-            child: _buildStatCard(
-                'Follow-ups', '3', AppColors.cardPurple, Icons.event_repeat)),
-        const SizedBox(width: 16),
-        Expanded(
-            child: _buildStatCard(
-                'Pending Labs', '2', AppColors.cardCyan, Icons.science)),
+            child: _buildStatCard('In Progress', '${_myPatients.length}',
+                AppColors.cardPurple, Icons.pending)),
       ],
     );
   }
