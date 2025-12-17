@@ -1,5 +1,12 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
 import '../../models/ticket_model.dart';
+import '../../models/user_model.dart';
 import '../../services/firestore_service.dart';
 import '../../utils/colors.dart';
 import '../../utils/text_styles.dart';
@@ -13,11 +20,17 @@ class QueueManagementScreen extends StatefulWidget {
 
 class _QueueManagementScreenState extends State<QueueManagementScreen> {
   final FirestoreService _firestoreService = FirestoreService();
-  String _selectedFilter = 'All';
-  final List<String> _filters = ['All', 'Waiting', 'In Progress', 'Completed'];
-  int _waitingCount = 0;
+  String _selectedFilter = 'In Process';
+  final List<String> _filters = ['In Process', 'Completed', 'Cancelled'];
   int _inProgressCount = 0;
   int _completedCount = 0;
+  int _cancelledCount = 0;
+
+  bool _isInProcessStatus(TicketStatus status) {
+    return status == TicketStatus.waiting ||
+        status == TicketStatus.called ||
+        status == TicketStatus.inProgress;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -45,22 +58,18 @@ class _QueueManagementScreenState extends State<QueueManagementScreen> {
           final allTickets = snapshot.data ?? [];
 
           // Update counts
-          _waitingCount = allTickets
-              .where((t) =>
-                  t.status == TicketStatus.waiting ||
-                  t.status == TicketStatus.called)
-              .length;
-          _inProgressCount = allTickets
-              .where((t) => t.status == TicketStatus.inProgress)
-              .length;
+          _inProgressCount =
+              allTickets.where((t) => _isInProcessStatus(t.status)).length;
           _completedCount = allTickets
               .where((t) => t.status == TicketStatus.completed)
               .length;
+          _cancelledCount = allTickets
+              .where((t) => t.status == TicketStatus.cancelled)
+              .length;
 
           // Filter tickets
-          final tickets = _selectedFilter == 'All'
-              ? allTickets
-              : allTickets.where((t) => _matchesFilter(t.status)).toList();
+          final tickets =
+              allTickets.where((t) => _matchesFilter(t.status)).toList();
 
           return Column(
             children: [
@@ -71,19 +80,11 @@ class _QueueManagementScreenState extends State<QueueManagementScreen> {
                 child: Row(
                   children: [
                     _buildQuickStat(
-                        'Waiting', '$_waitingCount', AppColors.cardOrange),
-                    _buildQuickStat(
-                        'In Progress', '$_inProgressCount', AppColors.cardBlue),
+                        'In Process', '$_inProgressCount', AppColors.cardBlue),
                     _buildQuickStat(
                         'Completed', '$_completedCount', AppColors.success),
-                    const Spacer(),
-                    ElevatedButton.icon(
-                      onPressed: () => _callNextPatient(allTickets),
-                      icon: const Icon(Icons.campaign),
-                      label: const Text('Call Next'),
-                      style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.cardBlue),
-                    ),
+                    _buildQuickStat(
+                        'Cancelled', '$_cancelledCount', AppColors.error),
                   ],
                 ),
               ),
@@ -131,12 +132,12 @@ class _QueueManagementScreenState extends State<QueueManagementScreen> {
 
   bool _matchesFilter(TicketStatus status) {
     switch (_selectedFilter) {
-      case 'Waiting':
-        return status == TicketStatus.waiting || status == TicketStatus.called;
-      case 'In Progress':
-        return status == TicketStatus.inProgress;
+      case 'In Process':
+        return _isInProcessStatus(status);
       case 'Completed':
         return status == TicketStatus.completed;
+      case 'Cancelled':
+        return status == TicketStatus.cancelled;
       default:
         return true;
     }
@@ -253,17 +254,12 @@ class _QueueManagementScreenState extends State<QueueManagementScreen> {
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
             child: Row(
               children: [
-                if (ticket.status == TicketStatus.waiting) ...[
-                  _buildActionButton('Call', Icons.campaign, AppColors.cardBlue,
-                      () => _callTicket(ticket)),
+                if (_isInProcessStatus(ticket.status)) ...[
+                  _buildActionButton('Mark as complete', Icons.check_circle,
+                      AppColors.success, () => _completeTicket(ticket)),
                   const SizedBox(width: 8),
                   _buildActionButton('Prioritize', Icons.priority_high,
                       AppColors.cardOrange, () => _prioritizeTicket(ticket)),
-                ],
-                if (ticket.status == TicketStatus.called ||
-                    ticket.status == TicketStatus.inProgress) ...[
-                  _buildActionButton('Complete', Icons.check_circle,
-                      AppColors.success, () => _completeTicket(ticket)),
                 ],
                 const Spacer(),
                 _buildActionButton('View', Icons.visibility,
@@ -273,8 +269,6 @@ class _QueueManagementScreenState extends State<QueueManagementScreen> {
                   icon: const Icon(Icons.more_vert,
                       color: AppColors.textSecondary),
                   itemBuilder: (context) => [
-                    const PopupMenuItem(
-                        value: 'forward', child: Text('Forward to Doctor')),
                     const PopupMenuItem(
                         value: 'cancel', child: Text('Cancel Ticket')),
                   ],
@@ -316,14 +310,6 @@ class _QueueManagementScreenState extends State<QueueManagementScreen> {
     final hour = dateTime.hour > 12 ? dateTime.hour - 12 : dateTime.hour;
     final amPm = dateTime.hour >= 12 ? 'PM' : 'AM';
     return '${hour == 0 ? 12 : hour}:${dateTime.minute.toString().padLeft(2, '0')} $amPm';
-  }
-
-  void _callTicket(TicketModel ticket) async {
-    await _firestoreService.callPatient(ticket.id);
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Calling ${ticket.patientName}...')));
-    }
   }
 
   void _prioritizeTicket(TicketModel ticket) async {
@@ -402,10 +388,6 @@ class _QueueManagementScreenState extends State<QueueManagementScreen> {
 
   void _handleMenuAction(String action, TicketModel ticket) async {
     switch (action) {
-      case 'forward':
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text('${ticket.patientName} forwarded to doctor')));
-        break;
       case 'cancel':
         await _firestoreService.cancelTicket(ticket.id);
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -415,10 +397,49 @@ class _QueueManagementScreenState extends State<QueueManagementScreen> {
   }
 
   void _showNewTicketDialog() {
-    String? selectedVisitType;
-    bool isUrgent = false;
-    final patientNameController = TextEditingController();
-    final contactController = TextEditingController();
+    UserModel? selectedPatient;
+    DateTime admissionDate = DateTime.now();
+    String? selectedTicketColor;
+    String frequencyValue = '';
+    List<String> scheduleTimes = [];
+    int? generatedQueueNumber;
+
+    final caseNoController = TextEditingController();
+    final brandNameController = TextEditingController();
+    final admissionDateController =
+        TextEditingController(text: _formatDate(admissionDate));
+    final frequencyController = TextEditingController();
+
+    final ticketColorOptions = <String, Map<String, dynamic>>{
+      'Orange': {
+        'frequency': 'Every 8 hrs',
+        'times': ['6 AM', '2 PM', '10 PM'],
+      },
+      'Blue': {
+        'frequency': 'Every 4 hrs',
+        'times': ['2 AM', '6 AM', '10 AM', '2 PM', '6 PM', '10 PM'],
+      },
+      'Pink': {
+        'frequency': '3X a Day/TID',
+        'times': ['6 AM', '1 PM', '6 PM'],
+      },
+      'Yellow': {
+        'frequency': 'Every 12 hrs/BID/Hrs of sleep',
+        'times': ['6 AM', '6 PM', 'HS-9 PM'],
+      },
+      'Green': {
+        'frequency': '4X a Day/QID',
+        'times': ['6 AM', '10 AM', '2 PM', '6 PM'],
+      },
+      'White': {
+        'frequency': 'Once a Day',
+        'times': ['6 AM'],
+      },
+      'Red': {
+        'frequency': 'Every 6 hrs/q6 and for STAT dose',
+        'times': ['12 AM', '6 AM', '12 NN', '6 PM'],
+      },
+    };
 
     showDialog(
       context: context,
@@ -426,67 +447,201 @@ class _QueueManagementScreenState extends State<QueueManagementScreen> {
         builder: (context, setDialogState) => AlertDialog(
           title: const Text('Generate New Ticket'),
           content: SizedBox(
-            width: 400,
+            width: 560,
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
+                Row(
+                  children: [
+                    Expanded(
+                      flex: 3,
+                      child: StreamBuilder<List<UserModel>>(
+                        stream: _firestoreService.getActivePatients(),
+                        builder: (context, snapshot) {
+                          final patients = snapshot.data ?? [];
+                          return DropdownButtonFormField<UserModel>(
+                            value: selectedPatient,
+                            dropdownColor: AppColors.inputBackground,
+                            style: const TextStyle(color: AppColors.inputText),
+                            decoration: const InputDecoration(
+                              labelText: 'Patient Name',
+                              prefixIcon: Icon(Icons.person),
+                            ),
+                            items: patients
+                                .map((p) => DropdownMenuItem<UserModel>(
+                                      value: p,
+                                      child: Text(p.fullName,
+                                          style: const TextStyle(
+                                              color: AppColors.inputText)),
+                                    ))
+                                .toList(),
+                            onChanged: generatedQueueNumber != null
+                                ? null
+                                : (value) {
+                                    setDialogState(
+                                        () => selectedPatient = value);
+                                  },
+                          );
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      flex: 2,
+                      child: TextField(
+                        controller: admissionDateController,
+                        readOnly: true,
+                        style: const TextStyle(color: AppColors.inputText),
+                        decoration: const InputDecoration(
+                          labelText: 'Admission Date',
+                          prefixIcon: Icon(Icons.calendar_today),
+                        ),
+                        onTap: generatedQueueNumber != null
+                            ? null
+                            : () async {
+                                final picked = await showDatePicker(
+                                  context: context,
+                                  initialDate: admissionDate,
+                                  firstDate: DateTime(2000),
+                                  lastDate: DateTime.now()
+                                      .add(const Duration(days: 365)),
+                                );
+                                if (picked != null) {
+                                  setDialogState(() {
+                                    admissionDate = picked;
+                                    admissionDateController.text =
+                                        _formatDate(picked);
+                                  });
+                                }
+                              },
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
                 TextField(
-                  controller: patientNameController,
+                  controller: caseNoController,
+                  enabled: generatedQueueNumber == null,
                   style: const TextStyle(color: AppColors.inputText),
                   decoration: const InputDecoration(
-                    labelText: 'Patient Name',
-                    hintText: 'Enter patient name',
-                    prefixIcon: Icon(Icons.person),
+                    labelText: 'Case No.',
+                    prefixIcon: Icon(Icons.badge),
                   ),
                 ),
                 const SizedBox(height: 16),
                 TextField(
-                  controller: contactController,
+                  controller: brandNameController,
+                  enabled: generatedQueueNumber == null,
                   style: const TextStyle(color: AppColors.inputText),
-                  keyboardType: TextInputType.phone,
                   decoration: const InputDecoration(
-                    labelText: 'Contact Number',
-                    hintText: 'Enter contact number',
-                    prefixIcon: Icon(Icons.phone),
+                    labelText: 'Brand Name of Dosage',
+                    prefixIcon: Icon(Icons.medication_outlined),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: frequencyController,
+                  readOnly: true,
+                  style: const TextStyle(color: AppColors.inputText),
+                  decoration: const InputDecoration(
+                    labelText: 'Frequency',
+                    prefixIcon: Icon(Icons.schedule),
                   ),
                 ),
                 const SizedBox(height: 16),
                 DropdownButtonFormField<String>(
-                  value: selectedVisitType,
+                  value: selectedTicketColor,
                   dropdownColor: AppColors.inputBackground,
                   style: const TextStyle(color: AppColors.inputText),
                   decoration: const InputDecoration(
-                    labelText: 'Visit Type',
-                    hintText: 'Select visit type',
-                    prefixIcon: Icon(Icons.category),
+                    labelText: 'Ticket Color',
+                    prefixIcon: Icon(Icons.color_lens_outlined),
                   ),
-                  items: [
-                    'General Consultation',
-                    'Follow-up',
-                    'Laboratory',
-                    'Pharmacy'
-                  ]
-                      .map((e) => DropdownMenuItem(
-                          value: e,
-                          child: Text(e,
-                              style:
-                                  const TextStyle(color: AppColors.inputText))))
+                  items: ticketColorOptions.keys
+                      .map((c) => DropdownMenuItem<String>(
+                            value: c,
+                            child: Text(c,
+                                style: const TextStyle(
+                                    color: AppColors.inputText)),
+                          ))
                       .toList(),
-                  onChanged: (value) {
-                    setDialogState(() => selectedVisitType = value);
-                  },
+                  onChanged: generatedQueueNumber != null
+                      ? null
+                      : (value) {
+                          if (value == null) return;
+                          final def = ticketColorOptions[value]!;
+                          setDialogState(() {
+                            selectedTicketColor = value;
+                            frequencyValue = def['frequency'] as String;
+                            scheduleTimes =
+                                List<String>.from(def['times'] as List);
+                            frequencyController.text =
+                                '$frequencyValue - ${scheduleTimes.join(' - ')}';
+                          });
+                        },
                 ),
-                const SizedBox(height: 16),
-                SwitchListTile(
-                  title: const Text('Mark as Urgent'),
-                  value: isUrgent,
-                  onChanged: (value) {
-                    setDialogState(() => isUrgent = value);
-                  },
-                  activeColor: AppColors.error,
-                  secondary:
-                      const Icon(Icons.priority_high, color: AppColors.error),
-                ),
+                if (generatedQueueNumber != null) ...[
+                  const SizedBox(height: 16),
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: AppColors.grey100,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AppColors.grey200),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            'Ticket #$generatedQueueNumber',
+                            style: AppTextStyles.bodyMedium.copyWith(
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                        ElevatedButton(
+                          onPressed: () async {
+                            if (selectedPatient == null) return;
+                            if (selectedTicketColor == null) return;
+                            if (generatedQueueNumber == null) return;
+
+                            try {
+                              final bytes = await _buildMedicationTicketPdf(
+                                queueNumber: generatedQueueNumber!,
+                                patientName: selectedPatient!.fullName,
+                                admissionDate: admissionDate,
+                                caseNo: caseNoController.text.trim(),
+                                brandName: brandNameController.text.trim(),
+                                ticketColor: selectedTicketColor!,
+                                frequency: frequencyValue,
+                                scheduleTimes: scheduleTimes,
+                              );
+
+                              await Printing.layoutPdf(
+                                onLayout: (_) async => bytes,
+                              );
+
+                              if (!mounted) return;
+                              Navigator.pop(context);
+                            } catch (e) {
+                              if (!mounted) return;
+                              ScaffoldMessenger.of(this.context).showSnackBar(
+                                  SnackBar(content: Text('Print failed: $e')));
+                            }
+                          },
+                          style: ElevatedButton.styleFrom(
+                              backgroundColor: AppColors.cardTeal),
+                          child: const Text('Print'),
+                        ),
+                        const SizedBox(width: 12),
+                        OutlinedButton(
+                          onPressed: () => Navigator.pop(context),
+                          child: const Text('Cancel'),
+                        ),
+                      ],
+                    ),
+                  ),
+                ]
               ],
             ),
           ),
@@ -495,11 +650,29 @@ class _QueueManagementScreenState extends State<QueueManagementScreen> {
                 onPressed: () => Navigator.pop(context),
                 child: const Text('Cancel')),
             ElevatedButton(
-              onPressed: () {
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                    content: Text('Ticket #09 generated successfully')));
-              },
+              onPressed: generatedQueueNumber != null
+                  ? null
+                  : () {
+                      if (selectedPatient == null) return;
+                      if (selectedTicketColor == null) return;
+                      if (brandNameController.text.trim().isEmpty) return;
+                      if (caseNoController.text.trim().isEmpty) return;
+
+                      _createNewMedicationTicket(
+                        patient: selectedPatient!,
+                        admissionDate: admissionDate,
+                        caseNo: caseNoController.text.trim(),
+                        brandName: brandNameController.text.trim(),
+                        ticketColor: selectedTicketColor!,
+                        frequency: frequencyValue,
+                        scheduleTimes: scheduleTimes,
+                      ).then((queueNumber) {
+                        if (queueNumber != null) {
+                          setDialogState(
+                              () => generatedQueueNumber = queueNumber);
+                        }
+                      });
+                    },
               style:
                   ElevatedButton.styleFrom(backgroundColor: AppColors.cardTeal),
               child: const Text('Generate Ticket'),
@@ -510,52 +683,222 @@ class _QueueManagementScreenState extends State<QueueManagementScreen> {
     );
   }
 
-  void _callNextPatient(List<TicketModel> tickets) {
-    final waitingTickets =
-        tickets.where((t) => t.status == TicketStatus.waiting).toList();
-    if (waitingTickets.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No patients waiting in queue')));
-      return;
-    }
+  Future<int?> _createNewMedicationTicket({
+    required UserModel patient,
+    required DateTime admissionDate,
+    required String caseNo,
+    required String brandName,
+    required String ticketColor,
+    required String frequency,
+    required List<String> scheduleTimes,
+  }) async {
+    try {
+      final ticket = await _firestoreService.createTicket(
+        patientId: patient.id,
+        patientName: patient.fullName,
+        department: ticketColor,
+        chiefComplaint: brandName,
+        priority: TicketPriority.normal,
+      );
 
-    final nextTicket = waitingTickets.first;
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Row(children: [
-          const Icon(Icons.campaign, color: AppColors.cardBlue),
-          const SizedBox(width: 8),
-          const Text('Calling Next Patient'),
-        ]),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text('Queue #${nextTicket.queueNumber}',
-                style: AppTextStyles.h3.copyWith(color: AppColors.cardBlue)),
-            const SizedBox(height: 8),
-            Text(nextTicket.patientName, style: AppTextStyles.h5),
-            const SizedBox(height: 16),
-            const Text(
-                'Patient will be notified. Please wait for them to arrive.'),
-          ],
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel')),
-          ElevatedButton(
-            onPressed: () async {
-              await _firestoreService.callPatient(nextTicket.id);
-              Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                  content: Text('${nextTicket.patientName} has been called')));
-            },
-            child: const Text('Confirm Call'),
-          ),
-        ],
+      await _firestoreService.updateTicket(ticket.id, {
+        'admissionDate': Timestamp.fromDate(admissionDate),
+        'caseNo': caseNo,
+        'brandName': brandName,
+        'ticketColor': ticketColor,
+        'frequency': frequency,
+        'scheduleTimes': scheduleTimes,
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content:
+                Text('Ticket #${ticket.queueNumber} generated successfully')));
+      }
+      return ticket.queueNumber;
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Failed: $e')));
+      }
+      return null;
+    }
+  }
+
+  PdfColor _pdfColorForTicket(String ticketColor) {
+    switch (ticketColor) {
+      case 'Red':
+        return PdfColors.red;
+      case 'White':
+        return PdfColors.white;
+      case 'Green':
+        return PdfColors.green;
+      case 'Yellow':
+        return PdfColors.yellow;
+      case 'Pink':
+        return PdfColors.pink;
+      case 'Blue':
+        return PdfColors.blue;
+      case 'Orange':
+        return PdfColors.orange;
+      default:
+        return PdfColors.grey;
+    }
+  }
+
+  Future<Uint8List> _buildMedicationTicketPdf({
+    required int queueNumber,
+    required String patientName,
+    required DateTime admissionDate,
+    required String caseNo,
+    required String brandName,
+    required String ticketColor,
+    required String frequency,
+    required List<String> scheduleTimes,
+  }) async {
+    final doc = pw.Document();
+
+    final accent = _pdfColorForTicket(ticketColor);
+    final schedule = scheduleTimes.join(' - ');
+
+    doc.addPage(
+      pw.Page(
+        pageFormat: PdfPageFormat.a6,
+        margin: const pw.EdgeInsets.all(16),
+        build: (context) {
+          return pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+            children: [
+              pw.Container(
+                padding: const pw.EdgeInsets.all(12),
+                decoration: pw.BoxDecoration(
+                  color: accent,
+                  borderRadius: pw.BorderRadius.circular(8),
+                  border: pw.Border.all(color: PdfColors.black, width: 1),
+                ),
+                child: pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Text(
+                      'MEDICATION TICKET',
+                      style: pw.TextStyle(
+                        fontSize: 14,
+                        fontWeight: pw.FontWeight.bold,
+                        color: ticketColor == 'White'
+                            ? PdfColors.black
+                            : PdfColors.white,
+                      ),
+                    ),
+                    pw.SizedBox(height: 6),
+                    pw.Row(
+                      mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                      children: [
+                        pw.Text(
+                          'Ticket #$queueNumber',
+                          style: pw.TextStyle(
+                            fontSize: 16,
+                            fontWeight: pw.FontWeight.bold,
+                            color: ticketColor == 'White'
+                                ? PdfColors.black
+                                : PdfColors.white,
+                          ),
+                        ),
+                        pw.Text(
+                          ticketColor,
+                          style: pw.TextStyle(
+                            fontSize: 12,
+                            fontWeight: pw.FontWeight.bold,
+                            color: ticketColor == 'White'
+                                ? PdfColors.black
+                                : PdfColors.white,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              pw.SizedBox(height: 12),
+              pw.Container(
+                padding: const pw.EdgeInsets.all(12),
+                decoration: pw.BoxDecoration(
+                  border: pw.Border.all(color: PdfColors.grey300),
+                  borderRadius: pw.BorderRadius.circular(8),
+                ),
+                child: pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Text('Patient Name',
+                        style: pw.TextStyle(
+                            fontSize: 10, color: PdfColors.grey700)),
+                    pw.Text(patientName,
+                        style: pw.TextStyle(
+                            fontSize: 12, fontWeight: pw.FontWeight.bold)),
+                    pw.SizedBox(height: 10),
+                    pw.Row(
+                      children: [
+                        pw.Expanded(
+                          child: pw.Column(
+                            crossAxisAlignment: pw.CrossAxisAlignment.start,
+                            children: [
+                              pw.Text('Admission Date',
+                                  style: pw.TextStyle(
+                                      fontSize: 10, color: PdfColors.grey700)),
+                              pw.Text(_formatDate(admissionDate),
+                                  style: const pw.TextStyle(fontSize: 11)),
+                            ],
+                          ),
+                        ),
+                        pw.SizedBox(width: 12),
+                        pw.Expanded(
+                          child: pw.Column(
+                            crossAxisAlignment: pw.CrossAxisAlignment.start,
+                            children: [
+                              pw.Text('Case No.',
+                                  style: pw.TextStyle(
+                                      fontSize: 10, color: PdfColors.grey700)),
+                              pw.Text(caseNo,
+                                  style: const pw.TextStyle(fontSize: 11)),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    pw.SizedBox(height: 10),
+                    pw.Text('Brand Name of Dosage',
+                        style: pw.TextStyle(
+                            fontSize: 10, color: PdfColors.grey700)),
+                    pw.Text(brandName, style: const pw.TextStyle(fontSize: 11)),
+                    pw.SizedBox(height: 10),
+                    pw.Text('Frequency',
+                        style: pw.TextStyle(
+                            fontSize: 10, color: PdfColors.grey700)),
+                    pw.Text(frequency, style: const pw.TextStyle(fontSize: 11)),
+                    pw.SizedBox(height: 6),
+                    pw.Text('Schedule',
+                        style: pw.TextStyle(
+                            fontSize: 10, color: PdfColors.grey700)),
+                    pw.Text(schedule, style: const pw.TextStyle(fontSize: 11)),
+                  ],
+                ),
+              ),
+              pw.Spacer(),
+              pw.Text(
+                'Generated: ${_formatTime(DateTime.now())}',
+                textAlign: pw.TextAlign.center,
+                style: pw.TextStyle(fontSize: 9, color: PdfColors.grey700),
+              ),
+            ],
+          );
+        },
       ),
     );
+
+    return doc.save();
+  }
+
+  String _formatDate(DateTime dateTime) {
+    return '${dateTime.month}/${dateTime.day}/${dateTime.year}';
   }
 
   Widget _buildInfoRow(String label, String value) {

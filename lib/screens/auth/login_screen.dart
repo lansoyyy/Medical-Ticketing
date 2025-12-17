@@ -3,11 +3,8 @@ import '../../services/auth_service.dart';
 import '../../utils/colors.dart';
 import '../../utils/text_styles.dart';
 import '../../widgets/widgets.dart';
-import '../patient/patient_home_screen.dart';
 import '../nurse/nurse_home_screen.dart';
-import '../doctor/doctor_home_screen.dart';
 import '../admin/admin_home_screen.dart';
-import 'register_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -21,7 +18,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
   final AuthService _authService = AuthService();
-  String _selectedRole = 'Patient';
+  String _selectedRole = 'Nurse';
   bool _isLoading = false;
 
   @override
@@ -167,23 +164,14 @@ class _LoginScreenState extends State<LoginScreen> {
           Row(
             children: [
               Expanded(
-                child: _buildRoleChip('Patient', Icons.person_outline),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
                 child: _buildRoleChip('Nurse', Icons.medical_services_outlined),
               ),
               const SizedBox(width: 8),
               Expanded(
-                child: _buildRoleChip('Doctor', Icons.local_hospital_outlined),
+                child: _buildRoleChip(
+                    'Admin', Icons.admin_panel_settings_outlined),
               ),
             ],
-          ),
-          const SizedBox(height: 8),
-          // Admin on separate row for better alignment
-          Align(
-            alignment: Alignment.centerLeft,
-            child: _buildRoleChip('Admin', Icons.admin_panel_settings_outlined),
           ),
           const SizedBox(height: 24),
 
@@ -211,32 +199,7 @@ class _LoginScreenState extends State<LoginScreen> {
           const SizedBox(height: 32),
 
           // Register Link
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(
-                "Don't have an account? ",
-                style: AppTextStyles.bodySmall
-                    .copyWith(color: AppColors.textSecondary),
-              ),
-              TextButton(
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                        builder: (context) => const RegisterScreen()),
-                  );
-                },
-                child: Text(
-                  'Register',
-                  style: AppTextStyles.bodySmall.copyWith(
-                    color: AppColors.primary,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ],
-          ),
+          const SizedBox.shrink(),
           const SizedBox(height: 16),
 
           // Privacy Policy Link
@@ -442,13 +405,23 @@ class _LoginScreenState extends State<LoginScreen> {
     }
 
     if (result.user != null && mounted) {
+      final selectedRole = _selectedRole.toLowerCase();
+      final actualRole = result.user!.role.toLowerCase();
+      if (selectedRole != actualRole) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text('Invalid role for this account'),
+              backgroundColor: AppColors.error),
+        );
+        return;
+      }
       _navigateToRoleHome(result.user!.role);
     }
   }
 
   void _handleGuestAccess() {
     // Guest access navigates to patient home without auth
-    _navigateToRoleHome('patient');
+    _navigateToRoleHome('nurse');
   }
 
   void _navigateToRoleHome(String role) {
@@ -457,15 +430,11 @@ class _LoginScreenState extends State<LoginScreen> {
       case 'nurse':
         screen = const NurseHomeScreen();
         break;
-      case 'doctor':
-        screen = const DoctorHomeScreen();
-        break;
       case 'admin':
         screen = const AdminHomeScreen();
         break;
-      case 'patient':
       default:
-        screen = const PatientHomeScreen();
+        screen = const NurseHomeScreen();
         break;
     }
 

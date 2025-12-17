@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../models/ticket_model.dart';
 import '../models/appointment_model.dart';
 import '../models/consultation_model.dart';
@@ -8,6 +9,58 @@ import '../models/user_model.dart';
 
 class FirestoreService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+
+  Future<({String userId, String userName, String userRole})?>
+      _getCurrentAuditUser() async {
+    final firebaseUser = FirebaseAuth.instance.currentUser;
+    if (firebaseUser == null) return null;
+
+    try {
+      final doc = await _usersCollection.doc(firebaseUser.uid).get();
+      if (!doc.exists) {
+        return (
+          userId: firebaseUser.uid,
+          userName: firebaseUser.email ?? 'User',
+          userRole: 'unknown'
+        );
+      }
+
+      final user = UserModel.fromFirestore(doc);
+      return (userId: user.id, userName: user.fullName, userRole: user.role);
+    } catch (_) {
+      return (
+        userId: firebaseUser.uid,
+        userName: firebaseUser.email ?? 'User',
+        userRole: 'unknown'
+      );
+    }
+  }
+
+  Future<void> _safeCreateAuditLog({
+    required AuditAction action,
+    required String description,
+    String? targetId,
+    String? targetType,
+    Map<String, dynamic>? details,
+  }) async {
+    try {
+      final auditUser = await _getCurrentAuditUser();
+      if (auditUser == null) return;
+
+      await createAuditLog(
+        userId: auditUser.userId,
+        userName: auditUser.userName,
+        userRole: auditUser.userRole,
+        action: action,
+        description: description,
+        targetId: targetId,
+        targetType: targetType,
+        details: details,
+      );
+    } catch (_) {
+      // ignore audit log failures
+    }
+  }
 
   // ==================== TICKETS ====================
 
@@ -59,6 +112,19 @@ class FirestoreService {
             .toList());
   }
 
+  Stream<Map<String, dynamic>?> getLatestTicketDataForPatient(
+      String patientId) {
+    return _ticketsCollection
+        .where('patientId', isEqualTo: patientId)
+        .orderBy('createdAt', descending: true)
+        .limit(1)
+        .snapshots()
+        .map((snapshot) {
+      if (snapshot.docs.isEmpty) return null;
+      return snapshot.docs.first.data() as Map<String, dynamic>;
+    });
+  }
+
   // Get patient's active ticket for today
   Future<TicketModel?> getPatientActiveTicket(String patientId) async {
     final today = DateTime.now();
@@ -93,7 +159,7 @@ class FirestoreService {
       patientId: patientId,
       patientName: patientName,
       queueNumber: queueNumber,
-      status: TicketStatus.waiting,
+      status: TicketStatus.inProgress,
       priority: priority,
       department: department,
       chiefComplaint: chiefComplaint,
@@ -101,6 +167,20 @@ class FirestoreService {
     );
 
     await docRef.set(ticket.toFirestore());
+
+    await _safeCreateAuditLog(
+      action: AuditAction.ticketCreated,
+      description: 'Ticket #${ticket.queueNumber} created for $patientName',
+      targetId: ticket.id,
+      targetType: 'ticket',
+      details: {
+        'patientId': patientId,
+        'patientName': patientName,
+        'queueNumber': ticket.queueNumber,
+        'department': department,
+      },
+    );
+
     return ticket;
   }
 
@@ -149,6 +229,13 @@ class FirestoreService {
       'status': TicketStatus.completed.name,
       'completedAt': Timestamp.now(),
     });
+
+    await _safeCreateAuditLog(
+      action: AuditAction.ticketCompleted,
+      description: 'Ticket completed',
+      targetId: ticketId,
+      targetType: 'ticket',
+    );
   }
 
   // Cancel ticket
@@ -156,6 +243,13 @@ class FirestoreService {
     await _ticketsCollection.doc(ticketId).update({
       'status': TicketStatus.cancelled.name,
     });
+
+    await _safeCreateAuditLog(
+      action: AuditAction.ticketCancelled,
+      description: 'Ticket cancelled',
+      targetId: ticketId,
+      targetType: 'ticket',
+    );
   }
 
   // Get tickets assigned to a doctor
@@ -281,6 +375,23 @@ class FirestoreService {
     );
 
     await docRef.set(appointment.toFirestore());
+
+    await _safeCreateAuditLog(
+      action: AuditAction.appointmentCreated,
+      description: 'Appointment booked for $patientName',
+      targetId: appointment.id,
+      targetType: 'appointment',
+      details: {
+        'patientId': patientId,
+        'patientName': patientName,
+        'doctorId': doctorId,
+        'doctorName': doctorName,
+        'department': department,
+        'appointmentDate': Timestamp.fromDate(appointmentDate),
+        'timeSlot': timeSlot,
+      },
+    );
+
     return appointment;
   }
 
@@ -295,6 +406,13 @@ class FirestoreService {
     await _appointmentsCollection.doc(appointmentId).update({
       'status': AppointmentStatus.cancelled.name,
     });
+
+    await _safeCreateAuditLog(
+      action: AuditAction.appointmentCancelled,
+      description: 'Appointment cancelled',
+      targetId: appointmentId,
+      targetType: 'appointment',
+    );
   }
 
   // ==================== CONSULTATIONS ====================
@@ -445,21 +563,39 @@ class FirestoreService {
 
   // Get all users
   Stream<List<UserModel>> getAllUsers() {
-    return _usersCollection
-        .orderBy('createdAt', descending: true)
-        .snapshots()
-        .map((snapshot) =>
-            snapshot.docs.map((doc) => UserModel.fromFirestore(doc)).toList());
+    return _usersCollection.snapshots().map((snapshot) {
+      final users =
+          snapshot.docs.map((doc) => UserModel.fromFirestore(doc)).toList();
+      users.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      return users;
+    });
   }
 
   // Get users by role
   Stream<List<UserModel>> getUsersByRole(String role) {
+    return _usersCollection.where('role', isEqualTo: role).snapshots().map(
+      (snapshot) {
+        final users =
+            snapshot.docs.map((doc) => UserModel.fromFirestore(doc)).toList();
+        users.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+        return users;
+      },
+    );
+  }
+
+  Stream<List<UserModel>> getActivePatients() {
     return _usersCollection
-        .where('role', isEqualTo: role)
-        .orderBy('createdAt', descending: true)
+        .where('role', isEqualTo: 'patient')
+        .where('isActive', isEqualTo: true)
         .snapshots()
-        .map((snapshot) =>
-            snapshot.docs.map((doc) => UserModel.fromFirestore(doc)).toList());
+        .map(
+      (snapshot) {
+        final users =
+            snapshot.docs.map((doc) => UserModel.fromFirestore(doc)).toList();
+        users.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+        return users;
+      },
+    );
   }
 
   // Get active doctors
@@ -590,7 +726,6 @@ class FirestoreService {
             isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay))
         .get();
 
-    // Today's appointments
     final todayAppointmentsSnapshot = await _appointmentsCollection
         .where('appointmentDate',
             isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay))
@@ -649,12 +784,21 @@ class FirestoreService {
             isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay))
         .get();
 
+    final todayAppointmentsSnapshot = await _appointmentsCollection
+        .where('appointmentDate',
+            isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay))
+        .where('appointmentDate',
+            isLessThan:
+                Timestamp.fromDate(startOfDay.add(const Duration(days: 1))))
+        .get();
+
     return {
       'totalUsers': totalUsers,
       'totalDoctors': totalDoctors,
       'totalNurses': totalNurses,
       'totalPatients': totalPatients,
       'todayTickets': todayTicketsSnapshot.docs.length,
+      'todayAppointments': todayAppointmentsSnapshot.docs.length,
     };
   }
 }

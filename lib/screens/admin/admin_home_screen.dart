@@ -8,8 +8,6 @@ import '../../widgets/dashboard_tile.dart';
 import '../../widgets/sidebar_item.dart';
 import '../auth/login_screen.dart';
 import 'user_management_screen.dart';
-import 'system_config_screen.dart';
-import 'reports_screen.dart';
 import 'audit_log_screen.dart';
 
 class AdminHomeScreen extends StatefulWidget {
@@ -28,7 +26,9 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
   int _totalUsers = 0;
   int _totalDoctors = 0;
   int _totalNurses = 0;
+  int _totalPatients = 0;
   int _todayTickets = 0;
+  int _todayAppointments = 0;
 
   @override
   void initState() {
@@ -48,7 +48,9 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
         _totalUsers = stats['totalUsers'] ?? 0;
         _totalDoctors = stats['totalDoctors'] ?? 0;
         _totalNurses = stats['totalNurses'] ?? 0;
+        _totalPatients = stats['totalPatients'] ?? 0;
         _todayTickets = stats['todayTickets'] ?? 0;
+        _todayAppointments = stats['todayAppointments'] ?? 0;
       });
     }
   }
@@ -56,8 +58,6 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
   final List<_NavItem> _navItems = [
     _NavItem(icon: Icons.dashboard_outlined, label: 'Dashboard'),
     _NavItem(icon: Icons.people_outlined, label: 'User Management'),
-    _NavItem(icon: Icons.settings_outlined, label: 'System Config'),
-    _NavItem(icon: Icons.analytics_outlined, label: 'Reports'),
     _NavItem(icon: Icons.history_outlined, label: 'Audit Log'),
   ];
 
@@ -245,19 +245,19 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
         const SizedBox(width: 16),
         Expanded(
             child: _buildStatCard(
+                'Today\'s Appointments',
+                '$_todayAppointments',
+                AppColors.cardOrange,
+                Icons.event_available,
+                'Booked appointments')),
+        const SizedBox(width: 16),
+        Expanded(
+            child: _buildStatCard(
                 'Doctors',
                 '$_totalDoctors',
                 AppColors.cardPurple,
                 Icons.medical_services,
                 'Registered doctors')),
-        const SizedBox(width: 16),
-        Expanded(
-            child: _buildStatCard(
-                'Nurses',
-                '$_totalNurses',
-                AppColors.cardOrange,
-                Icons.health_and_safety,
-                'Registered nurses')),
       ],
     );
   }
@@ -304,10 +304,6 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
   Widget _buildQuickActionsGrid() {
     final tiles = [
       _TileData(Icons.person_add, 'Add User', AppColors.cardBlue),
-      _TileData(Icons.schedule, 'Manage Schedules', AppColors.cardGreen),
-      _TileData(Icons.meeting_room, 'Departments', AppColors.cardPurple),
-      _TileData(Icons.assessment, 'View Reports', AppColors.cardOrange),
-      _TileData(Icons.rule, 'Queue Rules', AppColors.cardCyan),
       _TileData(Icons.security, 'Audit Logs', AppColors.cardIndigo),
     ];
 
@@ -351,8 +347,6 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
           const SizedBox(height: 16),
           _buildActivityItem('New patient registered', 'Juan Dela Cruz',
               '5 min ago', Icons.person_add, AppColors.cardGreen),
-          _buildActivityItem('Doctor schedule updated', 'Dr. Maria Santos',
-              '15 min ago', Icons.schedule, AppColors.cardBlue),
           _buildActivityItem('User role changed', 'Nurse Ana Reyes',
               '1 hour ago', Icons.admin_panel_settings, AppColors.cardPurple),
           _buildActivityItem('Medical record edited', 'Pedro Garcia',
@@ -421,10 +415,13 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
               style: AppTextStyles.bodyMedium
                   .copyWith(fontWeight: FontWeight.w600)),
           const SizedBox(height: 12),
-          _buildUserCount('Patients', 120, AppColors.cardGreen),
-          _buildUserCount('Nurses', 15, AppColors.cardBlue),
-          _buildUserCount('Doctors', 12, AppColors.cardPurple),
-          _buildUserCount('Admins', 4, AppColors.cardRed),
+          _buildUserCount('Patients', _totalPatients, AppColors.cardGreen),
+          _buildUserCount('Nurses', _totalNurses, AppColors.cardBlue),
+          _buildUserCount('Doctors', _totalDoctors, AppColors.cardPurple),
+          _buildUserCount(
+              'Admins',
+              (_totalUsers - _totalPatients - _totalNurses - _totalDoctors),
+              AppColors.cardRed),
         ],
       ),
     );
@@ -479,12 +476,6 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
         _navigateTo(const UserManagementScreen());
         break;
       case 2:
-        _navigateTo(const SystemConfigScreen());
-        break;
-      case 3:
-        _navigateTo(const ReportsScreen());
-        break;
-      case 4:
         _navigateTo(const AuditLogScreen());
         break;
     }
@@ -494,14 +485,6 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
     switch (label) {
       case 'Add User':
         _navigateTo(const UserManagementScreen());
-        break;
-      case 'Manage Schedules':
-      case 'Departments':
-      case 'Queue Rules':
-        _navigateTo(const SystemConfigScreen());
-        break;
-      case 'View Reports':
-        _navigateTo(const ReportsScreen());
         break;
       case 'Audit Logs':
         _navigateTo(const AuditLogScreen());

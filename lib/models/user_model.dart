@@ -10,6 +10,13 @@ class UserModel {
   final String? gender;
   final DateTime? birthDate;
   final String? address;
+  final String? occupation;
+  final String? birthplace;
+  final String? parentsOrGuardian;
+  final String? civilStatus;
+  final String? healthInsurance;
+  final String? religion;
+  final String? nationality;
   final String? profileImageUrl;
   final String? department;
   final String? specialization;
@@ -40,6 +47,13 @@ class UserModel {
     this.gender,
     this.birthDate,
     this.address,
+    this.occupation,
+    this.birthplace,
+    this.parentsOrGuardian,
+    this.civilStatus,
+    this.healthInsurance,
+    this.religion,
+    this.nationality,
     this.profileImageUrl,
     this.department,
     this.specialization,
@@ -77,6 +91,13 @@ class UserModel {
           ? (data['birthDate'] as Timestamp).toDate()
           : null,
       address: data['address'],
+      occupation: data['occupation'],
+      birthplace: data['birthplace'],
+      parentsOrGuardian: data['parentsOrGuardian'],
+      civilStatus: data['civilStatus'],
+      healthInsurance: data['healthInsurance'],
+      religion: data['religion'],
+      nationality: data['nationality'],
       profileImageUrl: data['profileImageUrl'],
       department: data['department'],
       specialization: data['specialization'],
@@ -115,6 +136,13 @@ class UserModel {
       'gender': gender,
       'birthDate': birthDate != null ? Timestamp.fromDate(birthDate!) : null,
       'address': address,
+      'occupation': occupation,
+      'birthplace': birthplace,
+      'parentsOrGuardian': parentsOrGuardian,
+      'civilStatus': civilStatus,
+      'healthInsurance': healthInsurance,
+      'religion': religion,
+      'nationality': nationality,
       'profileImageUrl': profileImageUrl,
       'department': department,
       'specialization': specialization,
@@ -143,6 +171,13 @@ class UserModel {
     String? gender,
     DateTime? birthDate,
     String? address,
+    String? occupation,
+    String? birthplace,
+    String? parentsOrGuardian,
+    String? civilStatus,
+    String? healthInsurance,
+    String? religion,
+    String? nationality,
     String? profileImageUrl,
     String? department,
     String? specialization,
@@ -169,6 +204,13 @@ class UserModel {
       gender: gender ?? this.gender,
       birthDate: birthDate ?? this.birthDate,
       address: address ?? this.address,
+      occupation: occupation ?? this.occupation,
+      birthplace: birthplace ?? this.birthplace,
+      parentsOrGuardian: parentsOrGuardian ?? this.parentsOrGuardian,
+      civilStatus: civilStatus ?? this.civilStatus,
+      healthInsurance: healthInsurance ?? this.healthInsurance,
+      religion: religion ?? this.religion,
+      nationality: nationality ?? this.nationality,
       profileImageUrl: profileImageUrl ?? this.profileImageUrl,
       department: department ?? this.department,
       specialization: specialization ?? this.specialization,

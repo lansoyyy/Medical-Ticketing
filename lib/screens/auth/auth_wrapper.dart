@@ -2,9 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../../services/auth_service.dart';
 import '../../utils/colors.dart';
-import '../patient/patient_home_screen.dart';
 import '../nurse/nurse_home_screen.dart';
-import '../doctor/doctor_home_screen.dart';
 import '../admin/admin_home_screen.dart';
 import 'login_screen.dart';
 
@@ -128,13 +126,31 @@ class _RoleBasedRedirectState extends State<_RoleBasedRedirect> {
     switch (_role?.toLowerCase()) {
       case 'nurse':
         return const NurseHomeScreen();
-      case 'doctor':
-        return const DoctorHomeScreen();
       case 'admin':
         return const AdminHomeScreen();
-      case 'patient':
       default:
-        return const PatientHomeScreen();
+        return _UnsupportedRoleLogout(authService: _authService);
     }
+  }
+}
+
+class _UnsupportedRoleLogout extends StatefulWidget {
+  final AuthService authService;
+  const _UnsupportedRoleLogout({required this.authService});
+
+  @override
+  State<_UnsupportedRoleLogout> createState() => _UnsupportedRoleLogoutState();
+}
+
+class _UnsupportedRoleLogoutState extends State<_UnsupportedRoleLogout> {
+  @override
+  void initState() {
+    super.initState();
+    widget.authService.logout();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return const LoginScreen();
   }
 }

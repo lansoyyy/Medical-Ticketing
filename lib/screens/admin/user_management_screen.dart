@@ -22,7 +22,7 @@ class _UserManagementScreenState extends State<UserManagementScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 4, vsync: this);
+    _tabController = TabController(length: 3, vsync: this);
   }
 
   @override
@@ -57,7 +57,6 @@ class _UserManagementScreenState extends State<UserManagementScreen>
           tabs: const [
             Tab(text: 'Patients', icon: Icon(Icons.person, size: 20)),
             Tab(text: 'Nurses', icon: Icon(Icons.medical_services, size: 20)),
-            Tab(text: 'Doctors', icon: Icon(Icons.local_hospital, size: 20)),
             Tab(
                 text: 'Admins',
                 icon: Icon(Icons.admin_panel_settings, size: 20)),
@@ -105,7 +104,6 @@ class _UserManagementScreenState extends State<UserManagementScreen>
               children: [
                 _buildUserStream('patient'),
                 _buildUserStream('nurse'),
-                _buildUserStream('doctor'),
                 _buildUserStream('admin'),
               ],
             ),
@@ -117,12 +115,22 @@ class _UserManagementScreenState extends State<UserManagementScreen>
 
   Widget _buildUserStream(String role) {
     return StreamBuilder<List<UserModel>>(
+      key: ValueKey('users-$role'),
       stream: _firestoreService.getUsersByRole(role),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(
               child: CircularProgressIndicator(color: AppColors.primary));
         }
+
+        if (snapshot.hasError) {
+          return Center(
+            child: Text('Failed to load users',
+                style: AppTextStyles.bodyMedium
+                    .copyWith(color: AppColors.textSecondary)),
+          );
+        }
+
         final users = snapshot.data ?? [];
         return _buildUserListFromModels(users, role);
       },
@@ -327,13 +335,11 @@ class _UserManagementScreenState extends State<UserManagementScreen>
 
   Color _getRoleColor(String role) {
     switch (role) {
-      case 'Patient':
+      case 'patient':
         return AppColors.cardGreen;
-      case 'Nurse':
+      case 'nurse':
         return AppColors.cardBlue;
-      case 'Doctor':
-        return AppColors.cardPurple;
-      case 'Admin':
+      case 'admin':
         return AppColors.cardRed;
       default:
         return AppColors.grey500;
@@ -365,7 +371,7 @@ class _UserManagementScreenState extends State<UserManagementScreen>
                     labelText: 'User Role',
                     hintText: 'Select role',
                   ),
-                  items: ['Patient', 'Nurse', 'Doctor', 'Admin']
+                  items: ['Patient', 'Nurse', 'Admin']
                       .map((r) => DropdownMenuItem(
                           value: r,
                           child: Text(r,

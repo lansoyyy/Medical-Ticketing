@@ -21,9 +21,6 @@ class _QueueScreenState extends State<QueueScreen>
   UserModel? _currentUser;
   TicketModel? _activeTicket;
   bool _isLoading = true;
-  bool _isCreatingTicket = false;
-
-  final _chiefComplaintController = TextEditingController();
 
   @override
   void initState() {
@@ -50,7 +47,6 @@ class _QueueScreenState extends State<QueueScreen>
   @override
   void dispose() {
     _tabController.dispose();
-    _chiefComplaintController.dispose();
     super.dispose();
   }
 
@@ -88,14 +84,7 @@ class _QueueScreenState extends State<QueueScreen>
                 _buildTicketHistoryTab(),
               ],
             ),
-      floatingActionButton: _activeTicket == null
-          ? FloatingActionButton.extended(
-              onPressed: _showCreateTicketDialog,
-              backgroundColor: AppColors.primary,
-              icon: const Icon(Icons.add),
-              label: const Text('Get Ticket'),
-            )
-          : null,
+      floatingActionButton: null,
     );
   }
 
@@ -131,107 +120,15 @@ class _QueueScreenState extends State<QueueScreen>
                 style: AppTextStyles.h5.copyWith(color: AppColors.textPrimary)),
             const SizedBox(height: 8),
             Text(
-              'You don\'t have an active queue ticket.\nTap the button below to get one.',
+              'Please proceed to the nurse station to create your queue ticket.',
               textAlign: TextAlign.center,
               style: AppTextStyles.bodyMedium
                   .copyWith(color: AppColors.textSecondary),
             ),
-            const SizedBox(height: 32),
-            ElevatedButton.icon(
-              onPressed: _showCreateTicketDialog,
-              icon: const Icon(Icons.add),
-              label: const Text('Get Queue Ticket'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primary,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
-              ),
-            ),
           ],
         ),
       ),
     );
-  }
-
-  void _showCreateTicketDialog() {
-    _chiefComplaintController.clear();
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Get Queue Ticket'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('Please describe your reason for visit:'),
-            const SizedBox(height: 16),
-            TextField(
-              controller: _chiefComplaintController,
-              maxLines: 3,
-              style: TextStyle(color: AppColors.white),
-              decoration: InputDecoration(
-                hintText: 'e.g., Fever, Headache, Check-up...',
-                border:
-                    OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: _isCreatingTicket ? null : _createTicket,
-            child: _isCreatingTicket
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Text('Get Ticket'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _createTicket() async {
-    if (_currentUser == null) return;
-
-    setState(() => _isCreatingTicket = true);
-
-    try {
-      final ticket = await _firestoreService.createTicket(
-        patientId: _currentUser!.id,
-        patientName: _currentUser!.fullName,
-        chiefComplaint: _chiefComplaintController.text.trim(),
-      );
-
-      if (mounted) {
-        Navigator.pop(context);
-        setState(() {
-          _activeTicket = ticket;
-          _isCreatingTicket = false;
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content:
-                Text('Ticket #${ticket.queueNumber} created successfully!'),
-            backgroundColor: AppColors.success,
-          ),
-        );
-      }
-    } catch (e) {
-      setState(() => _isCreatingTicket = false);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content: Text('Error: $e'), backgroundColor: AppColors.error),
-        );
-      }
-    }
   }
 
   Widget _buildActiveQueueCard() {
